@@ -1,13 +1,13 @@
 {
   "JOBNAME": "!sanitize_job_name($name)",
   "DRIVER": "!retrieve_driver_contents($mode)",
-  "DUMMY": "!retrieve_tasks_and_other_resources($mode,'','1',$cpus,$memory,$gpu,$numgpu,$walltime,$account,$extra_slurm,$slurmbox)",
+  "DUMMY": "!retrieve_tasks_and_other_resources($mode,'','1',$cpus,$memory,$gpu,$numgpu,$walltime,$account,$extra_slurm,'Yes')",
   "flocation": "$location",
   "MONITOR_DIR": "!resolve_monitor_dir($mode, $pt_workflow, $job_dir)",
-  "setupEnv": "!setup_pytorch_modules_if_run($mode, $modelCategory, $datasetType, $builtinDataset)",
+  "setupEnv": "!setup_pytorch_modules_if_run($mode, $modelCategory, $datasetType, $builtinDataset, $seqBuiltinDataset, $graphBuiltinDataset, $genBuiltinDataset, $gpu)",
   "MONITOR": "!retrieve_monitor_action($mode, $pt_workflow, $jobs, $job_dir)",
   "DUMMY_MONITOR": "!configure_monitor_mode($mode, $pt_workflow, $job_dir)",
   "DUMMY_PREVIEW": "!build_monitor_preview_html($mode, $pt_workflow, $job_dir)",
   "tbLaunch": "!setup_tensorboard_in_job($mode, $enableTensorBoard, $location)",
-  "additional_filesv2": "!generate_lightning_script_if_run($mode, $modelCategory, $name, $datasetType, $builtinDataset, $customDataPath, $epochs, $batchSize, $learningRate, $numWorkers, $seed, $gpu, $logDir, $logEveryNSteps, $enableTensorBoard, $checkpointEnable, $hfModelName, $hfDatasetName, $textDatasetType, $textColumn, $labelColumn, $customTextPath, $maxSeqLen, $numLabels, $seqDatasetType, $seqBuiltinDataset, $tsDataPath, $seqLen, $predLen, $targetColumn, $hiddenSize, $numLstmLayers, $seqTaskType, $graphDatasetType, $graphBuiltinDataset, $graphDataPath, $gnnHiddenDim, $gnnNumLayers, $genDatasetType, $genBuiltinDataset, $genCustomPath, $latentDim, $customDatasetPath, $location, $slurmbox, $precision)"
+  "additional_filesv2": "!generate_lightning_script_if_run($mode, $modelCategory, $name, $datasetType, $builtinDataset, $customDataPath, $epochs, $batchSize, $learningRate, $numWorkers, $seed, $gpu, $logDir, $logEveryNSteps, $enableTensorBoard, $checkpointEnable, $hfModelName, $hfDatasetName, $textDatasetType, $textColumn, $labelColumn, $customTextPath, $maxSeqLen, $numLabels, $seqDatasetType, $seqBuiltinDataset, $tsDataPath, $seqLen, $predLen, $targetColumn, $hiddenSize, $numLstmLayers, $seqTaskType, $graphDatasetType, $graphBuiltinDataset, $graphDataPath, $gnnHiddenDim, $gnnNumLayers, $genDatasetType, $genBuiltinDataset, $genCustomPath, $latentDim, $customDatasetPath, $location, 'Yes', $precision)"
 }

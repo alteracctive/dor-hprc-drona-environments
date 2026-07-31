@@ -1,7 +1,7 @@
 import math
 
 pytorch_lightning_modules = (
-    "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1"
+    "module load GCC/13.3.0 OpenMPI/5.0.3 Lightning/2.5.6-CUDA-12.6.0"
 )
 
 maxcpunode=96
@@ -57,14 +57,8 @@ def cluster_slurm_checks(nodenum,tasknum,cpunum,totalmemnum,gpu,numgpunum,timest
          drona_add_message("Max limit of 32 GPUs, you requested "+str(numgpunum) + ". Setting number of GPUs to 32.", "warning")
       sbatchgpustring=" --gres=gpu:"+gpu+":"+str(numgpunum)
    elif gpu == "pvc":
+      drona_add_message("Intel PVC GPUs are not supported in the PyTorch-Lightning environment.", "error")
       partition="pvc"
-      if nodenum > 32:
-         drona_add_message("PVC jobs cannot request more than 32 nodes. Your job will not run.", "error")
-      if total_hours > 48:
-         drona_add_message("PVC jobs have walltime limit of 48 hours. Your job will not run.", "error")
-      if numgpunum > 32:
-         drona_add_message("Max limit of 32 PVCs, you requested "+str(numgpunum) + ". Setting number of PVCs to 32.", "warning")
-         numgpunum=32
       sbatchgpustring=" --gres=gpu:"+gpu+":"+str(numgpunum)
    elif gpu != "" and gpu != "none":
       partition="gpu"

@@ -1,7 +1,7 @@
 import math
 
 pytorch_lightning_modules = (
-    "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1"
+    "module load GCC/13.3.0 OpenMPI/5.0.3 Lightning/2.5.6-CUDA-12.6.0"
 )
 
 maxcpunode = 48

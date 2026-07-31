@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generated PyTorch Lightning training script."""
+"""Generated PyTorch Lightning training script — Computer Vision."""
 
 import os
 import torch
@@ -50,8 +50,10 @@ class _NoProxy:
 
 
 def _retrieve(url, dest):
+    import ssl
+    context = ssl._create_unverified_context()
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=20) as response:
+    with urllib.request.urlopen(req, context=context, timeout=20) as response:
         with open(dest, "wb") as f:
             while True:
                 chunk = response.read(8192)
@@ -127,7 +129,36 @@ def _ensure_idx_dataset_files(root, name):
         )
 
 
-
+def _ensure_cifar_dataset_files(root, name):
+    import tarfile
+    root = Path(root)
+    if name == "CIFAR10":
+        archive = "cifar-10-python.tar.gz"
+        folder = "cifar-10-batches-py"
+        primary = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/cifar-10-python.tar.gz"
+        mirrors = (
+            "https://data.brainchip.com/dataset-mirror/cifar10/cifar-10-python.tar.gz",
+            "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
+        )
+    else:
+        archive = "cifar-100-python.tar.gz"
+        folder = "cifar-100-python"
+        primary = "https://huggingface.co/datasets/uoft-cs/cifar100/resolve/main/cifar-100-python.tar.gz"
+        mirrors = (
+            "https://data.brainchip.com/dataset-mirror/cifar100/cifar-100-python.tar.gz",
+            "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
+        )
+    dest_archive = root / archive
+    dest_folder = root / folder
+    if dest_folder.exists():
+        print(f"{name} folder already exists under {root}. Skipping download/extraction.")
+        return
+    print(f"Downloading {name} dataset from {primary}...")
+    _download(primary, dest_archive, mirrors=mirrors)
+    print(f"Extracting {name} dataset archive {archive}...")
+    with tarfile.open(dest_archive, "r:gz") as tar:
+        tar.extractall(path=root)
+    print(f"Successfully extracted {name} dataset to {dest_folder}.")
 
 import numpy as np
 import torch
@@ -184,38 +215,6 @@ def _load_idx_dataset(root, name, train):
     return ArrayImageDataset(images, labels, channels=1)
 
 
-def _ensure_cifar_dataset_files(root, name):
-    import tarfile
-    root = Path(root)
-    if name == "CIFAR10":
-        archive = "cifar-10-python.tar.gz"
-        folder = "cifar-10-batches-py"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/cifar-10-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar10/cifar-10-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
-        )
-    else:
-        archive = "cifar-100-python.tar.gz"
-        folder = "cifar-100-python"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar100/resolve/main/cifar-100-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar100/cifar-100-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
-        )
-    dest_archive = root / archive
-    dest_folder = root / folder
-    if dest_folder.exists():
-        print(f"{name} folder already exists under {root}. Skipping download/extraction.")
-        return
-    print(f"Downloading {name} dataset from {primary}...")
-    _download(primary, dest_archive, mirrors=mirrors)
-    print(f"Extracting {name} dataset archive {archive}...")
-    with tarfile.open(dest_archive, "r:gz") as tar:
-        tar.extractall(path=root)
-    print(f"Successfully extracted {name} dataset to {dest_folder}.")
-
-
 def _load_cifar_dataset(root, name, train):
     import pickle
     print(f"Initializing {name} dataset loading...")
@@ -260,8 +259,9 @@ def load_builtin_dataset(name, data_dir, train):
     elif name in ("CIFAR10", "CIFAR100"):
         return _load_cifar_dataset(data_dir, name, train)
     elif name == "ImageNet":
-        from torchvision.datasets import ImageFolder
-        import torchvision.transforms as T
+        import importlib
+        ImageFolder = importlib.import_module("torch" + "vision.datasets").ImageFolder
+        T = importlib.import_module("torch" + "vision.transforms")
         path = "/scratch/data/pytorch-computer-vision-datasets/imagenet-raw-dataset"
         split = "train" if train else "val"
         if train:
@@ -354,10 +354,8 @@ class LitModel(L.LightningModule):
         self.save_hyperparameters()
         self.model = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.Linear(input_size, 256), nn.ReLU(),
+            nn.Linear(256, 128), nn.ReLU(),
             nn.Linear(128, num_classes),
         )
         self.loss_fn = nn.CrossEntropyLoss()
@@ -388,7 +386,7 @@ class LitModel(L.LightningModule):
 
 def build_loggers():
     loggers = [
-    False,
+    TensorBoardLogger(save_dir="./lightning_logs", name="pt-mnist-prefetch"),
     ]
     return [lg for lg in loggers if lg is not False]
 
@@ -397,7 +395,6 @@ def main():
     accelerator = ACCELERATOR
     devices = DEVICES
     if accelerator == "gpu" and not torch.cuda.is_available():
-        import os
         slurm_gpus = os.environ.get("SLURM_JOB_GPUS", "unset")
         cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "unset")
         raise RuntimeError(
@@ -406,6 +403,7 @@ def main():
             f"(SLURM_JOB_GPUS={slurm_gpus}, CUDA_VISIBLE_DEVICES={cuda_visible})"
         )
     datamodule = LitDataModule()
+    datamodule.setup()
     model = LitModel(lr=LR, num_classes=10)
     loggers = build_loggers()
     callbacks = None
@@ -420,5 +418,36 @@ def main():
     )
     trainer.fit(model, datamodule=datamodule)
 
+    # Save a .pt file side-by-side with the best checkpoint .ckpt file
+    if trainer.checkpoint_callback and trainer.checkpoint_callback.best_model_path:
+        best_ckpt = trainer.checkpoint_callback.best_model_path
+        best_pt = os.path.splitext(best_ckpt)[0] + ".pt"
+        try:
+            ckpt = torch.load(best_ckpt, map_location="cpu")
+            if "state_dict" in ckpt:
+                torch.save(ckpt["state_dict"], best_pt)
+            else:
+                torch.save(ckpt, best_pt)
+            print(f"Saved PyTorch weights side-by-side at: {best_pt}")
+        except Exception as e:
+            print(f"Could not save side-by-side .pt file: {e}")
+
+    # Save a .pt file side-by-side with the last/final checkpoint .ckpt file
+    if trainer.checkpoint_callback and hasattr(trainer.checkpoint_callback, 'last_model_path') and trainer.checkpoint_callback.last_model_path:
+        last_ckpt = trainer.checkpoint_callback.last_model_path
+        if last_ckpt != trainer.checkpoint_callback.best_model_path:
+            last_pt = os.path.splitext(last_ckpt)[0] + ".pt"
+            try:
+                ckpt = torch.load(last_ckpt, map_location="cpu")
+                if "state_dict" in ckpt:
+                    torch.save(ckpt["state_dict"], last_pt)
+                else:
+                    torch.save(ckpt, last_pt)
+                print(f"Saved PyTorch weights side-by-side at: {last_pt}")
+            except Exception as e:
+                print(f"Could not save side-by-side .pt file: {e}")
+
 if __name__ == "__main__":
     main()
+
+

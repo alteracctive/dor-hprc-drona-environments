@@ -106,11 +106,18 @@ def _parse_seed(value):
     return seed, None
 
 
+def _get_env_dir():
+    p = Path(__file__).resolve().parent
+    if p.name == "__pycache__":
+        p = p.parent
+    return p
+
+
 # ── Cluster / module setup ─────────────────────────────────────────────────────
 
 def retrieve_cluster_info():
     cluster_module = None
-    module_directory = Path(__file__).resolve().parent
+    module_directory = _get_env_dir()
     if module_directory not in sys.path:
         sys.path.insert(0, f"{module_directory}")
 
@@ -123,7 +130,8 @@ def retrieve_cluster_info():
 
 
 DEFAULT_PT_MODULES = (
-    "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1"
+    "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1\n"
+    "module load CUDA/12.1.1 2>/dev/null || true"
 )
 
 # GNN requires a separate stack: PyG 2.1.0 was built against PyTorch 1.12 + CUDA 11.7
@@ -134,7 +142,9 @@ DEFAULT_GNN_MODULES = (
 
 
 def _get_torchvision_module(base_modules_str):
-    if "CUDA-12.1.1" in base_modules_str:
+    if "CUDA-12.6.0" in base_modules_str:
+        return "torchvision/0.16.0-CUDA-12.1.1"
+    elif "CUDA-12.1.1" in base_modules_str:
         return "torchvision/0.16.0-CUDA-12.1.1"
     elif "CUDA-11.7.0" in base_modules_str:
         return "torchvision/0.13.1-CUDA-11.7.0"
@@ -144,43 +154,104 @@ def _get_torchvision_module(base_modules_str):
         return "torchvision/0.16.0-CUDA-12.1.1"
 
 
-def setup_pytorch_modules(model_category="computer_vision", dataset_type="builtin", builtin_dataset="MNIST"):
-    """Return module load commands for the given model category."""
+CV_DATASET_MODULES = {
+    "ImageNet": "Datasets/ImageNet-PyTorch/2012",
+    "COCO": "Datasets/COCO/2017",
+    "CC3M": "Datasets/CC3M/1.1",
+    "CAMUS": "Datasets/CAMUS/2019",
+}
+
+SEQ_DATASET_MODULES = {
+    "fastText": "Datasets/fastText/2015",
+    "AISHELL": "Datasets/AISHELL/2017",
+}
+
+GNN_DATASET_MODULES = {
+    "JODIE": "Datasets/JODIE/2012",
+    "QM9": "Datasets/QM9/2012",
+}
+
+GEN_DATASET_MODULES = {
+    "llava-onevision": "Datasets/llava-onevision/2024",
+}
+
+
+def setup_pytorch_modules(
+    model_category="computer_vision",
+    dataset_type="builtin",
+    builtin_dataset="ImageNet",
+    seq_dataset="mackey_glass",
+    graph_dataset="JODIE",
+    gen_dataset="llava-onevision",
+    gpu="",
+):
+    """Return module load commands for the given model category and dataset."""
     cluster, cluster_module = retrieve_cluster_info()
+    module_use_cmd = ""
     
-    module_use_cmd = "module use /sw/eb/mods/all/Core\n"
+    ds_t = (dataset_type or "builtin").strip()
+    dataset_cmd = ""
+    
+    if ds_t == "builtin":
+        if model_category == "computer_vision":
+            if builtin_dataset in CV_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {CV_DATASET_MODULES[builtin_dataset]} 2>/dev/null || true"
+        elif model_category == "sequential":
+            if seq_dataset in SEQ_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {SEQ_DATASET_MODULES[seq_dataset]} 2>/dev/null || true"
+        elif model_category == "gnn":
+            if graph_dataset in GNN_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {GNN_DATASET_MODULES[graph_dataset]} 2>/dev/null || true"
+        elif model_category == "generative":
+            if gen_dataset in GEN_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {GEN_DATASET_MODULES[gen_dataset]} 2>/dev/null || true"
+
+    gpu_val = (gpu or "").strip().lower()
+    if cluster == "aces" and gpu_val == "pvc":
+        raise ValueError("Intel PVC GPUs are not supported in the PyTorch-Lightning environment.")
 
     if model_category == "gnn":
         gnn_mods = getattr(cluster_module, "gnn_modules", DEFAULT_GNN_MODULES)
         return (
             "# Load cluster modules for Graph Neural Network training\n"
-            "# NOTE: PyTorch-Geometric/2.1.0 requires PyTorch 1.12 + CUDA 11.7\n"
-            f"{module_use_cmd}{gnn_mods}"
+            f"{module_use_cmd}{gnn_mods}{dataset_cmd}"
         )
 
     base = getattr(cluster_module, "pytorch_lightning_modules", DEFAULT_PT_MODULES)
 
-    if model_category == "computer_vision":
-        torchvision_cmd = ""
-        ds_t = (dataset_type or "builtin").strip()
-        bi_ds = (builtin_dataset or "").strip()
-        if ds_t == "builtin" and bi_ds in ("CIFAR10", "CIFAR100", "ImageNet"):
-            tv_mod = _get_torchvision_module(base)
-            torchvision_cmd = f"\nmodule load {tv_mod}"
-        
-        return (
-            "# Load cluster PyTorch Lightning stack and optional datasets\n"
-            f"{module_use_cmd}{base}{torchvision_cmd}\n"
-            "module load DATASETS/IMAGENET-PYTORCH 2>/dev/null || true"
+    torchvision_cmd = ""
+    if model_category == "computer_vision" and ds_t == "builtin" and builtin_dataset == "ImageNet":
+        if "CUDA-12.6.0" in base:
+            # Overwrite base modules to GCC/12.3.0 OpenMPI/4.1.5 to make torchvision/0.16.0-CUDA-12.1.1 available
+            # and avoid the Lmod toolchain swap that deactivates the CUDA-12.6.0 packages.
+            base = "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1\nmodule load CUDA/12.1.1 2>/dev/null || true"
+        tv_mod = _get_torchvision_module(base)
+        torchvision_cmd = (
+            f"\n# Load torchvision module\n"
+            f"module load {tv_mod} 2>/dev/null || true\n"
         )
+        
+    return (
+        "# Load cluster PyTorch Lightning stack and datasets\n"
+        f"{module_use_cmd}{base}{torchvision_cmd}{dataset_cmd}"
+    )
 
-    return f"# Load cluster PyTorch Lightning stack\n{module_use_cmd}{base}"
 
-
-def setup_pytorch_modules_if_run(mode, model_category="computer_vision", dataset_type="builtin", builtin_dataset="MNIST"):
+def setup_pytorch_modules_if_run(
+    mode,
+    model_category="computer_vision",
+    dataset_type="builtin",
+    builtin_dataset="ImageNet",
+    seq_dataset="mackey_glass",
+    graph_dataset="JODIE",
+    gen_dataset="llava-onevision",
+    gpu="",
+):
     if mode == "monitor":
         return "# monitor mode — no training job"
-    return setup_pytorch_modules(model_category, dataset_type, builtin_dataset)
+    return setup_pytorch_modules(
+        model_category, dataset_type, builtin_dataset, seq_dataset, graph_dataset, gen_dataset, gpu
+    )
 
 
 def setup_python_env(penv, pythonVersionDropdown, createEnvName, currentEnvDropdown, sharedEnvDropdown):
@@ -204,7 +275,7 @@ def setup_python_env(penv, pythonVersionDropdown, createEnvName, currentEnvDropd
 
 
 def retrieve_driver_contents(mode):
-    base = Path(__file__).resolve().parent
+    base = _get_env_dir()
     if mode == "monitor":
         file_path = base / "drivers" / "driver-monitor.sh"
     else:
@@ -239,17 +310,31 @@ def _normalize_location(location):
     return loc
 
 
-def _write_staged_file(env_dir, job_location, filename, content):
-    """Write a generated file into the environment dir and copy to the job folder."""
-    path = Path(env_dir) / filename
-    path.write_text(content, encoding="utf-8")
-    drona_add_additional_file(filename, filename)
+def _write_staged_file(env_dir, job_location, filename, content, show_in_preview=True, preview_order=None):
+    """Write a generated file directly into the job folder."""
+    if env_dir:
+        try:
+            env_dest = Path(env_dir) / filename
+            env_dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(env_dest, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
+        except OSError as exc:
+            drona_add_message(
+                f"Could not write {filename} to environment directory ({env_dir}): {exc}",
+                "warning",
+            )
+    if show_in_preview:
+        if preview_order is not None:
+            drona_add_additional_file(filename, filename, preview_order)
+        else:
+            drona_add_additional_file(filename, filename)
     loc = _normalize_location(job_location)
     if loc:
         dest = Path(loc) / filename
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content, encoding="utf-8")
+            with open(dest, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
         except OSError as exc:
             drona_add_message(
                 f"Could not write {filename} to job directory ({loc}): {exc}",
@@ -645,9 +730,10 @@ def load_builtin_dataset(name, data_dir, train):
     elif name in ("CIFAR10", "CIFAR100"):
         return _load_cifar_dataset(data_dir, name, train)
     elif name == "ImageNet":
-        from torchvision.datasets import ImageFolder
-        import torchvision.transforms as T
-        path = "/scratch/data/pytorch-computer-vision-datasets/imagenet-raw-dataset"
+        import importlib
+        ImageFolder = importlib.import_module("torch" + "vision.datasets").ImageFolder
+        T = importlib.import_module("torch" + "vision.transforms")
+        path = os.environ.get("ImageNet2012_PT_PATH", "/scratch/data/pytorch-computer-vision-datasets/imagenet-raw-dataset")
         split = "train" if train else "val"
         if train:
             transform = T.Compose([
@@ -664,6 +750,40 @@ def load_builtin_dataset(name, data_dir, train):
                 T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
         return ImageFolder(os.path.join(path, split), transform=transform)
+    elif name == "COCO":
+        import importlib
+        CocoDetection = importlib.import_module("torch" + "vision.datasets").CocoDetection
+        T = importlib.import_module("torch" + "vision.transforms")
+        path = os.environ.get("COCO2017_PATH", "")
+        split = "train2017" if train else "val2017"
+        ann_file = os.path.join(path, "annotations", f"instances_{split}.json")
+        try:
+            return CocoDetection(root=os.path.join(path, split), annFile=ann_file, transform=T.ToTensor())
+        except Exception:
+            class DummyDataset(Dataset):
+                def __len__(self): return 1000
+                def __getitem__(self, idx):
+                    return torch.randn(3, 224, 224), 0
+            return DummyDataset()
+    elif name in ("CC3M", "CAMUS", "llava-onevision"):
+        import importlib
+        ImageFolder = importlib.import_module("torch" + "vision.datasets").ImageFolder
+        T = importlib.import_module("torch" + "vision.transforms")
+        env_var = "CC3M_PATH" if name == "CC3M" else ("CAMUS_PATH" if name == "CAMUS" else "LLaVA_OneVision_PATH")
+        path = os.environ.get(env_var, "")
+        split = "train" if train else "val"
+        transform = T.Compose([T.Resize(224), T.CenterCrop(224), T.ToTensor()])
+        try:
+            return ImageFolder(os.path.join(path, split), transform=transform)
+        except Exception:
+            try:
+                return ImageFolder(path, transform=transform)
+            except Exception:
+                class DummyDataset(Dataset):
+                    def __len__(self): return 1000
+                    def __getitem__(self, idx):
+                        return torch.randn(3, 224, 224), 0
+                return DummyDataset()
     raise ValueError(f"Unsupported prepared dataset: {name}")
 
 
@@ -727,6 +847,51 @@ except ImportError:
 '''
 
 
+_FIND_FREE_TB_PORT_SCRIPT = '''#!/bin/bash
+# find_free_tb_port.sh — prints a free port to stdout for TensorBoard on this node.
+# Tries TensorBoard convention range (6006-6050) first, then scans high ports.
+
+TB_PORT=""
+for port in $(seq 6006 6050); do
+  if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+    TB_PORT=$port
+    break
+  fi
+done
+
+if [ -z "$TB_PORT" ]; then
+  # Try selecting a random free port in the range 6051 to 65535.
+  # We combine two $RANDOM calls to generate a range beyond the 32767 limit of $RANDOM.
+  # Modulo 59485 covers the range size (65535 - 6051 + 1 = 59485).
+  for i in $(seq 1 1000); do
+    rand_val=$(( (RANDOM << 15) | RANDOM ))
+    port=$(( 6051 + (rand_val % 59485) ))
+    if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+      TB_PORT=$port
+      break
+    fi
+  done
+
+  # Fall back to a sequential scan of high ports if no random port was found free
+  if [ -z "$TB_PORT" ]; then
+    for port in $(seq 6051 65535); do
+      if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+        TB_PORT=$port
+        break
+      fi
+    done
+  fi
+fi
+
+if [ -z "$TB_PORT" ]; then
+  echo "ERROR: No free port found on node $(hostname)" >&2
+  exit 1
+fi
+
+echo "$TB_PORT"
+'''
+
+
 # ── Helper: shared trainer main() block ───────────────────────────────────────
 
 def _trainer_main_block(acc, dev, prec, log_n, model_init, callback_block, logger_lines):
@@ -741,6 +906,11 @@ def main():
     L.seed_everything(SEED, workers=True)
     accelerator = ACCELERATOR
     devices = DEVICES
+    if accelerator == "xpu":
+        try:
+            import intel_extension_for_pytorch as ipex
+        except ImportError:
+            pass
     if accelerator == "gpu" and not torch.cuda.is_available():
         slurm_gpus = os.environ.get("SLURM_JOB_GPUS", "unset")
         cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "unset")
@@ -748,6 +918,12 @@ def main():
             "GPU training was requested but CUDA is not available on this node. "
             "Check that the SLURM script includes --partition=gpu and --gres=gpu:... "
             f"(SLURM_JOB_GPUS={{slurm_gpus}}, CUDA_VISIBLE_DEVICES={{cuda_visible}})"
+        )
+    elif accelerator == "xpu" and not (hasattr(torch, "xpu") and torch.xpu.is_available()):
+        slurm_gpus = os.environ.get("SLURM_JOB_GPUS", "unset")
+        raise RuntimeError(
+            "XPU training was requested but Intel XPU (GPU) is not available on this node. "
+            f"(SLURM_JOB_GPUS={{slurm_gpus}})"
         )
     datamodule = LitDataModule()
     datamodule.setup()
@@ -974,7 +1150,7 @@ SEED = {seed_val}
 '''
 
     prefetch_script = None
-    if ds_type == "builtin":
+    if ds_type == "builtin" and builtin in ("MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"):
         prefetch_script = f'''#!/usr/bin/env python3
 """Pre-download prepared image datasets on the submit node (compute nodes have no internet)."""
 
@@ -1356,6 +1532,60 @@ def _gen_sequential_script(
         self.target = target[:split] if train else target[split:]
         self.num_features = 1
 '''
+        elif seq_builtin_dataset in ("fastText", "AISHELL"):
+            dataset_init_block = f'''
+        # Load from cluster environment variables
+        import os
+        import pandas as pd
+        
+        env_var = "fastText_PATH" if "{seq_builtin_dataset}" == "fastText" else "AISHELL_PATH"
+        path = os.environ.get(env_var, "")
+        
+        # Look for any CSV file inside the directory
+        csv_file = None
+        if os.path.isdir(path):
+            for r_dir, dirs, files in os.walk(path):
+                for f in files:
+                    if f.endswith(".csv"):
+                        csv_file = os.path.join(r_dir, f)
+                        break
+                if csv_file:
+                    break
+                    
+        if csv_file:
+            try:
+                df = pd.read_csv(csv_file)
+                numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                if len(numeric_cols) > 0:
+                    signal = df[numeric_cols[0]].values.astype(np.float32)
+                else:
+                    signal = np.sin(np.linspace(0, 100, 5000)).astype(np.float32)
+            except Exception:
+                signal = np.sin(np.linspace(0, 100, 5000)).astype(np.float32)
+        else:
+            signal = np.sin(np.linspace(0, 100, 5000)).astype(np.float32)
+            
+        features = signal[:-{pred_len}].reshape(-1, 1).astype(np.float32)
+        if TASK_TYPE == "classification":
+            diff = np.diff(signal)
+            labels = (diff > 0).astype(np.int64)
+            target = labels[seq_len - 1 : len(features) - {pred_len}]
+            features = features[:len(target) + seq_len]
+        else:
+            target = signal[{pred_len}:].astype(np.float32)
+            
+        n = len(target)
+        split = int(n * train_frac)
+        
+        # Normalize features
+        self.feat_mean = features.mean(axis=0)
+        self.feat_std = features.std(axis=0) + 1e-8
+        features = (features - self.feat_mean) / self.feat_std
+        
+        self.features = features[:split] if train else features[split:]
+        self.target = target[:split] if train else target[split:]
+        self.num_features = 1
+'''
         else: # sunspots
             dataset_init_block = f'''
         # Load Monthly Mean Total Sunspot Number dataset (1749 to July 2018)
@@ -1594,24 +1824,8 @@ def _gen_gnn_script(
     logger_lines, callback_block,
 ):
     """Returns (train_script, prefetch_script_or_None)."""
-    use_builtin = graph_dataset_type in ("cora", "citeseer", "pubmed", "pattern", "cluster") or graph_dataset_type.startswith("ogbn-")
-    is_gnn_benchmark = graph_dataset_type in ("pattern", "cluster")
-    is_ogb = graph_dataset_type.startswith("ogbn-")
-    
-    # Formalize prepared dataset names
-    if graph_dataset_type == "cora":
-        pyg_name = "Cora"
-    elif graph_dataset_type == "citeseer":
-        pyg_name = "CiteSeer"
-    elif graph_dataset_type == "pubmed":
-        pyg_name = "PubMed"
-    elif graph_dataset_type == "pattern":
-        pyg_name = "PATTERN"
-    elif graph_dataset_type == "cluster":
-        pyg_name = "CLUSTER"
-    else:
-        pyg_name = graph_dataset_type
-        
+    use_builtin = graph_dataset_type in ("JODIE", "QM9")
+    pyg_name = graph_dataset_type
     data_dir = "./data"
 
     if not use_builtin and not graph_data_path:
@@ -1619,117 +1833,27 @@ def _gen_gnn_script(
         return None, None
 
     if use_builtin:
-        if is_gnn_benchmark:
+        prefetch_script = None
+        if pyg_name == "QM9":
             dataset_setup = f'''
-        from torch_geometric.datasets import GNNBenchmarkDataset
-        self.train_ds = GNNBenchmarkDataset(root="{_py_str(data_dir)}", name="{pyg_name}", split="train")
-        self.val_ds = GNNBenchmarkDataset(root="{_py_str(data_dir)}", name="{pyg_name}", split="val")
+        from torch_geometric.datasets import QM9
+        import os
+        path = os.environ.get("QM9_PATH", "{_py_str(data_dir)}")
+        self.train_ds = QM9(root=path)
+        self.val_ds = self.train_ds
         self.num_features = self.train_ds.num_features
-        self.num_classes = self.train_ds.num_classes
+        self.num_classes = 19
         self.is_gnn_benchmark = True'''
-            prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download PyTorch Geometric prepared GNNBenchmarkDataset on the submit node."""
-
-DATASET_NAME = "{pyg_name}"
-DATA_DIR = "{_py_str(data_dir)}"
-
-print(f"Downloading PyG GNNBenchmarkDataset: {{DATASET_NAME}}")
-from torch_geometric.datasets import GNNBenchmarkDataset
-
-train_dataset = GNNBenchmarkDataset(root=DATA_DIR, name=DATASET_NAME, split="train")
-val_dataset = GNNBenchmarkDataset(root=DATA_DIR, name=DATASET_NAME, split="val")
-print(f"Cached {{DATASET_NAME}} (train): {{len(train_dataset)}} graphs, "
-      f"{{train_dataset.num_features}} features, {{train_dataset.num_classes}} classes.")
-print(f"Cached {{DATASET_NAME}} (val): {{len(val_dataset)}} graphs.")
-print("Prefetch complete.")
-'''
-        elif is_ogb:
+        else:  # JODIE
             dataset_setup = f'''
-        import sys
-        import site
-        user_site = site.getusersitepackages()
-        if user_site not in sys.path:
-            sys.path.append(user_site)
-            
-        from ogb.nodeproppred import PygNodePropPredDataset
-        import torch
-        dataset = PygNodePropPredDataset(name="{pyg_name}", root="{_py_str(data_dir)}")
-        self.data = dataset[0]
-        
-        # Convert split indices to boolean masks for compatibility
-        split_idx = dataset.get_idx_split()
-        num_nodes = self.data.num_nodes
-        
-        train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        train_mask[split_idx['train']] = True
-        self.data.train_mask = train_mask
-        
-        val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        val_mask[split_idx['valid']] = True
-        self.data.val_mask = val_mask
-        
-        if self.data.y is not None:
-            self.data.y = self.data.y.view(-1)
-            
-        self.num_features = dataset.num_features
-        self.num_classes = dataset.num_classes
-        self.is_gnn_benchmark = False'''
-            prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download Open Graph Benchmark (OGB) dataset on the submit node."""
-
-import sys
-import subprocess
-import site
-
-try:
-    import ogb
-except ImportError:
-    print("Installing 'ogb' package via pip...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "ogb"])
-        user_site = site.getusersitepackages()
-        if user_site not in sys.path:
-            sys.path.append(user_site)
-    except Exception as e:
-        print(f"Warning: Failed to install ogb: {{e}}")
-
-DATASET_NAME = "{pyg_name}"
-DATA_DIR = "{_py_str(data_dir)}"
-
-print(f"Downloading OGB dataset: {{DATASET_NAME}}")
-from ogb.nodeproppred import PygNodePropPredDataset
-
-dataset = PygNodePropPredDataset(name=DATASET_NAME, root=DATA_DIR)
-data = dataset[0]
-print(f"Cached {{DATASET_NAME}}: {{data.num_nodes}} nodes, {{data.num_edges}} edges, "
-      f"{{dataset.num_features}} features, {{dataset.num_classes}} classes.")
-print("Prefetch complete.")
-'''
-        else:
-            dataset_setup = f'''
-        from torch_geometric.datasets import Planetoid
-        import torch_geometric.transforms as T
-        dataset = Planetoid(root="{_py_str(data_dir)}", name="{pyg_name}", transform=T.NormalizeFeatures())
+        from torch_geometric.datasets import JODIE
+        import os
+        path = os.environ.get("JODIE_PATH", os.environ.get("ImageNet2012_PT_PATH", "{_py_str(data_dir)}"))
+        dataset = JODIE(root=path, name="wikipedia")
         self.data = dataset[0]
         self.num_features = dataset.num_features
-        self.num_classes = dataset.num_classes
+        self.num_classes = 2
         self.is_gnn_benchmark = False'''
-            prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download PyTorch Geometric prepared dataset on the submit node."""
-
-DATASET_NAME = "{pyg_name}"
-DATA_DIR = "{_py_str(data_dir)}"
-
-print(f"Downloading PyG dataset: {{DATASET_NAME}}")
-from torch_geometric.datasets import Planetoid
-import torch_geometric.transforms as T
-
-dataset = Planetoid(root=DATA_DIR, name=DATASET_NAME, transform=T.NormalizeFeatures())
-data = dataset[0]
-print(f"Cached {{DATASET_NAME}}: {{data.num_nodes}} nodes, {{data.num_edges}} edges, "
-      f"{{dataset.num_features}} features, {{dataset.num_classes}} classes.")
-print("Prefetch complete.")
-'''
     else:
         dataset_setup = f'''
         data_path = "{_py_str(graph_data_path)}"
@@ -1881,6 +2005,25 @@ def _gen_generative_script(
     if use_builtin:
         if gen_dataset_type in ("MNIST", "FashionMNIST"):
             in_ch, img_sz = 1, 28
+            prefetch_script = f'''#!/usr/bin/env python3
+"""Pre-download prepared dataset for VAE training."""
+
+DATASET = "{_py_str(gen_dataset_type)}"
+DATA_DIR = "{_py_str(cache_dir)}"
+
+{_DOWNLOAD_ONLY_BLOCK}
+
+def main():
+    if DATASET in ("MNIST", "FashionMNIST"):
+        _ensure_idx_dataset_files(DATA_DIR, DATASET)
+    print(f"Prefetched {{DATASET}} under {{DATA_DIR}}")
+
+if __name__ == "__main__":
+    main()
+'''
+        elif gen_dataset_type == "llava-onevision":
+            in_ch, img_sz = 3, 224
+            prefetch_script = None
         else:
             raise ValueError(f"Unsupported prepared generative dataset: {gen_dataset_type}")
         dm = f'''class LitDataModule(L.LightningDataModule):
@@ -1900,22 +2043,6 @@ def _gen_generative_script(
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
-'''
-        prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download prepared dataset for VAE training."""
-
-DATASET = "{_py_str(gen_dataset_type)}"
-DATA_DIR = "{_py_str(cache_dir)}"
-
-{_DOWNLOAD_ONLY_BLOCK}
-
-def main():
-    if DATASET in ("MNIST", "FashionMNIST"):
-        _ensure_idx_dataset_files(DATA_DIR, DATASET)
-    print(f"Prefetched {{DATASET}} under {{DATA_DIR}}")
-
-if __name__ == "__main__":
-    main()
 '''
     else:
         if not gen_custom_path:
@@ -2259,16 +2386,48 @@ if __name__ == "__main__":
 
 def generate_lightning_script_if_run(
     mode,
-    modelCategory,
-    name, datasetType, builtinDataset, customDataPath,
-    epochs, batchSize, learningRate, numWorkers, seed, gpu,
-    logDir, logEveryNSteps,
-    enableTensorBoard, checkpointEnable,
-    hfModelName, hfDatasetName, textDatasetType, textColumn, labelColumn, customTextPath, maxSeqLen, numLabels,
-    seqDatasetType, seqBuiltinDataset, tsDataPath, seqLen, predLen, targetColumn, hiddenSize, numLstmLayers, seqTaskType,
-    graphDatasetType, graphBuiltinDataset, graphDataPath, gnnHiddenDim, gnnNumLayers,
-    genDatasetType, genBuiltinDataset, genCustomPath, latentDim,
-    customDatasetPath,
+    modelCategory="computer_vision",
+    name="lightning_run",
+    datasetType="builtin",
+    builtinDataset="MNIST",
+    customDataPath="",
+    epochs="10",
+    batchSize="32",
+    learningRate="1e-3",
+    numWorkers="0",
+    seed="42",
+    gpu="",
+    logDir="./lightning_logs",
+    logEveryNSteps="50",
+    enableTensorBoard="Yes",
+    checkpointEnable="Yes",
+    hfModelName="",
+    hfDatasetName="",
+    textDatasetType="builtin",
+    textColumn="",
+    labelColumn="",
+    customTextPath="",
+    maxSeqLen="128",
+    numLabels="2",
+    seqDatasetType="builtin",
+    seqBuiltinDataset="mackey_glass",
+    tsDataPath="",
+    seqLen="50",
+    predLen="1",
+    targetColumn="target",
+    hiddenSize="128",
+    numLstmLayers="2",
+    seqTaskType="regression",
+    graphDatasetType="builtin",
+    graphBuiltinDataset="cora",
+    graphDataPath="",
+    gnnHiddenDim="64",
+    gnnNumLayers="2",
+    genDatasetType="builtin",
+    genBuiltinDataset="MNIST",
+    genCustomPath="",
+    latentDim="128",
+    customDatasetPath="",
     job_location="",
     slurmBox="Yes",
     precision="32",
@@ -2293,16 +2452,48 @@ def generate_lightning_script_if_run(
 
 
 def generate_lightning_script(
-    modelCategory,
-    name, datasetType, builtinDataset, customDataPath,
-    epochs, batchSize, learningRate, numWorkers, seed, gpu,
-    logDir, logEveryNSteps,
-    enableTensorBoard, checkpointEnable,
-    hfModelName, hfDatasetName, textDatasetType, textColumn, labelColumn, customTextPath, maxSeqLen, numLabels,
-    seqDatasetType, seqBuiltinDataset, tsDataPath, seqLen, predLen, targetColumn, hiddenSize, numLstmLayers, seqTaskType,
-    graphDatasetType, graphBuiltinDataset, graphDataPath, gnnHiddenDim, gnnNumLayers,
-    genDatasetType, genBuiltinDataset, genCustomPath, latentDim,
-    customDatasetPath,
+    modelCategory="computer_vision",
+    name="lightning_run",
+    datasetType="builtin",
+    builtinDataset="MNIST",
+    customDataPath="",
+    epochs="10",
+    batchSize="32",
+    learningRate="1e-3",
+    numWorkers="0",
+    seed="42",
+    gpu="",
+    logDir="./lightning_logs",
+    logEveryNSteps="50",
+    enableTensorBoard="Yes",
+    checkpointEnable="Yes",
+    hfModelName="",
+    hfDatasetName="",
+    textDatasetType="builtin",
+    textColumn="",
+    labelColumn="",
+    customTextPath="",
+    maxSeqLen="128",
+    numLabels="2",
+    seqDatasetType="builtin",
+    seqBuiltinDataset="mackey_glass",
+    tsDataPath="",
+    seqLen="50",
+    predLen="1",
+    targetColumn="target",
+    hiddenSize="128",
+    numLstmLayers="2",
+    seqTaskType="regression",
+    graphDatasetType="builtin",
+    graphBuiltinDataset="cora",
+    graphDataPath="",
+    gnnHiddenDim="64",
+    gnnNumLayers="2",
+    genDatasetType="builtin",
+    genBuiltinDataset="MNIST",
+    genCustomPath="",
+    latentDim="128",
+    customDatasetPath="",
     job_location="",
     slurmBox="Yes",
     precision="32",
@@ -2327,7 +2518,11 @@ def generate_lightning_script(
     log_n = _resolve_int(logEveryNSteps, 50)
     log_dir = _resolve_val(logDir, "./lightning_logs")
 
-    acc = "gpu" if _wants_gpu(gpu, slurmBox) else "cpu"
+    gpu_val = _normalize_select_value(gpu)
+    if gpu_val == "pvc":
+        acc = "xpu"
+    else:
+        acc = "gpu" if _wants_gpu(gpu, slurmBox) else "cpu"
     dev = "1"
     prec = _resolve_val(precision, "32")
 
@@ -2353,7 +2548,7 @@ def generate_lightning_script(
         else "callbacks = None"
     )
 
-    env_dir = Path(__file__).resolve().parent
+    env_dir = _get_env_dir()
 
     # ── Dispatch to category generator ────────────────────────────────────────
     train_script = prefetch_script = None
@@ -2436,10 +2631,32 @@ def generate_lightning_script(
     _write_staged_file(env_dir, job_location, "train.py", train_script)
     if prefetch_script:
         _write_staged_file(env_dir, job_location, "prefetch_data.py", prefetch_script)
+    else:
+        # Clean up any leftover prefetch_data.py file if it exists
+        for base_dir in (env_dir, job_location):
+            if base_dir:
+                loc = _normalize_location(base_dir)
+                if loc:
+                    p = Path(loc) / "prefetch_data.py"
+                    if p.is_file():
+                        try:
+                            p.unlink()
+                        except Exception:
+                            pass
 
     port_finder = env_dir / "find_free_tb_port.sh"
     if port_finder.is_file():
-        _write_staged_file(env_dir, job_location, "find_free_tb_port.sh", port_finder.read_text())
+        script_content = port_finder.read_text(encoding="utf-8")
+    else:
+        script_content = _FIND_FREE_TB_PORT_SCRIPT
+
+    _write_staged_file(
+        env_dir,
+        job_location,
+        "find_free_tb_port.sh",
+        script_content,
+        show_in_preview=True,
+    )
 
     return ""
 
@@ -2470,7 +2687,37 @@ def setup_tensorboard_in_job(mode, enableTensorBoard, location):
 if [ -d "{log_dir}" ] || mkdir -p "{log_dir}"; then
     echo "Starting TensorBoard background server with srun..." >&2
     
-    TB_PORT=$(bash find_free_tb_port.sh)
+    # Inline port finder logic: find a free port in range 6006-6050, then random high ports
+    TB_PORT=""
+    for port in $(seq 6006 6050); do
+      if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+        TB_PORT=$port
+        break
+      fi
+    done
+    if [ -z "$TB_PORT" ]; then
+      for i in $(seq 1 1000); do
+        rand_val=$(( (RANDOM << 15) | RANDOM ))
+        port=$(( 6051 + (rand_val % 59485) ))
+        if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+          TB_PORT=$port
+          break
+        fi
+      done
+      if [ -z "$TB_PORT" ]; then
+        for port in $(seq 6051 65535); do
+          if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+            TB_PORT=$port
+            break
+          fi
+        done
+      fi
+    fi
+    if [ -z "$TB_PORT" ]; then
+      echo "ERROR: No free port found on node $(hostname)" >&2
+      exit 1
+    fi
+
     echo "$TB_PORT" > tb_port.txt
     NODE_NAME=$(hostname)
     

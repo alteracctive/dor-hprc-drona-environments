@@ -18,6 +18,51 @@ import subprocess
 import socket
 import sys
 
+FIND_FREE_TB_PORT_SCRIPT = """#!/bin/bash
+# find_free_tb_port.sh — prints a free port to stdout for TensorBoard on this node.
+# Tries TensorBoard convention range (6006-6050) first, then scans high ports.
+
+TB_PORT=""
+for port in $(seq 6006 6050); do
+  if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+    TB_PORT=$port
+    break
+  fi
+done
+
+if [ -z "$TB_PORT" ]; then
+  # Try selecting a random free port in the range 6051 to 65535.
+  # We combine two $RANDOM calls to generate a range beyond the 32767 limit of $RANDOM.
+  # Modulo 59485 covers the range size (65535 - 6051 + 1 = 59485).
+  for i in $(seq 1 1000); do
+    rand_val=$(( (RANDOM << 15) | RANDOM ))
+    port=$(( 6051 + (rand_val % 59485) ))
+    if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+      TB_PORT=$port
+      break
+    fi
+  done
+
+  # Fall back to a sequential scan of high ports if no random port was found free
+  if [ -z "$TB_PORT" ]; then
+    for port in $(seq 6051 65535); do
+      if ! ss -tuln 2>/dev/null | grep -q ":${port} "; then
+        TB_PORT=$port
+        break
+      fi
+    done
+  fi
+fi
+
+if [ -z "$TB_PORT" ]; then
+  echo "ERROR: No free port found on node $(hostname)" >&2
+  exit 1
+fi
+
+echo "$TB_PORT"
+"""
+
+
 def clean_env_val(val):
     if not val:
         return ""
@@ -461,15 +506,13 @@ if tb_start_trigger:
                         pass
 
         # Stage port finder script for the separate TensorBoard job
-        port_finder_src = os.path.join(os.environ.get("SCRIPT_DIR", "."), "find_free_tb_port.sh")
         port_finder_dst = os.path.join(job_dir, "find_free_tb_port.sh")
-        if os.path.isfile(port_finder_src):
-            try:
-                import shutil
-                shutil.copy2(port_finder_src, port_finder_dst)
-                os.chmod(port_finder_dst, 0o755)
-            except Exception:
-                pass
+        try:
+            with open(port_finder_dst, "w", encoding="utf-8", newline="\n") as f:
+                f.write(FIND_FREE_TB_PORT_SCRIPT)
+            os.chmod(port_finder_dst, 0o755)
+        except Exception:
+            pass
 
         # Generate sbatch script content for the separate TensorBoard job
         sbatch_content = f"""#!/bin/bash
@@ -494,7 +537,37 @@ module load GCC/13.2.0 tensorboard/2.18.0
 
 cd "{job_dir}"
 
-TB_PORT=$(bash find_free_tb_port.sh)
+# Find a free port inline
+TB_PORT=""
+for port in $(seq 6006 6050); do
+  if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+    TB_PORT=$port
+    break
+  fi
+done
+if [ -z "$TB_PORT" ]; then
+  for i in $(seq 1 1000); do
+    rand_val=$(( (RANDOM << 15) | RANDOM ))
+    port=$(( 6051 + (rand_val % 59485) ))
+    if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+      TB_PORT=$port
+      break
+    fi
+  done
+  if [ -z "$TB_PORT" ]; then
+    for port in $(seq 6051 65535); do
+      if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
+        TB_PORT=$port
+        break
+      fi
+    done
+  fi
+fi
+if [ -z "$TB_PORT" ]; then
+  echo "ERROR: No free port found on node $(hostname)" >&2
+  exit 1
+fi
+
 echo "$TB_PORT" > tb_separate_port.txt
 
 echo "Starting TensorBoard on port $TB_PORT..."

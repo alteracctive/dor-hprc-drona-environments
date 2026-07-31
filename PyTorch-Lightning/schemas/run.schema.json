@@ -19,7 +19,7 @@
         "type": "select",
         "name": "modelCategory",
         "label": "Model category",
-        "help": "Select the type of model you want to train. Each category loads the correct cluster modules and generates a tailored train.py template.",
+        "help": "Select the model category:\\n- Computer Vision: Classification with MLP/CNN networks.\\n- Sequential: Recurrent LSTM networks for time-series forecasting/classification.\\n- Graph Neural Networks: Node classification on graphs (GCN).\\n- Generative Models: VAE for image reconstruction and latent spaces.\\n- Custom: A bare-bones, highly commented blueprint for any user model.",
         "options": [
           { "label": "Computer Vision", "value": "computer_vision" },
           { "label": "Sequential / Time-Series", "value": "sequential" },
@@ -42,10 +42,10 @@
         "name": "datasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Prepared", "value": "builtin" },
-          { "label": "Import", "value": "custom" }
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
         ],
-        "value": "builtin"
+        "value": "custom"
       },
       "builtinDatasetRow": {
         "type": "rowContainer",
@@ -56,14 +56,10 @@
             "type": "select",
             "label": "Prepared dataset",
             "name": "builtinDataset",
-            "value": "MNIST",
-            "help": "Datasets are downloaded automatically on the submit node when you click Submit (compute nodes have no internet).",
+            "value": "ImageNet",
+            "help": "Cluster dataset modules are loaded directly; prepared benchmarks are fetched automatically on the submit node.",
             "options": [
-              { "value": "MNIST", "label": "MNIST" },
-              { "value": "FashionMNIST", "label": "Fashion-MNIST" },
-              { "value": "CIFAR10", "label": "CIFAR-10" },
-              { "value": "CIFAR100", "label": "CIFAR-100" },
-              { "value": "ImageNet", "label": "ImageNet" }
+              { "value": "ImageNet", "label": "ImageNet (HPRC Datasets/ImageNet-PyTorch)" }
             ]
           }
         }
@@ -75,7 +71,7 @@
         "remoteLabel": "local",
         "localLabel": "cluster",
         "showFiles": "False",
-        "help": "Path to dataset root with train/ and val/ subdirectories. Each class is a subfolder containing .pt tensor files ([C,H,W] or dict with x/y keys).",
+        "help": "Path to dataset root with train/ and val/ subdirectories. Each class must be a subfolder (class name) containing standard raw images (.png, .jpg, .jpeg) corresponding to that class.",
         "condition": "datasetType.custom",
         "files": "False"
       }
@@ -92,10 +88,10 @@
         "name": "seqDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Prepared", "value": "builtin" },
-          { "label": "Import", "value": "custom" }
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
         ],
-        "value": "builtin"
+        "value": "custom"
       },
       "builtinSeqDatasetRow": {
         "type": "rowContainer",
@@ -108,10 +104,11 @@
             "name": "seqBuiltinDataset",
             "value": "mackey_glass",
             "options": [
-              { "value": "mackey_glass", "label": "Mackey-Glass" },
-              { "value": "sunspots", "label": "Monthly Sunspots (1749-2018)" }
+              { "value": "mackey_glass", "label": "Mackey-Glass (Generated)" },
+              { "value": "fastText", "label": "fastText (Datasets/fastText)" },
+              { "value": "AISHELL", "label": "AISHELL (Datasets/AISHELL)" }
             ],
-            "help": "Real/standard sequential datasets for demonstration."
+            "help": "Real/standard sequential datasets or cluster modules."
           }
         }
       },
@@ -193,10 +190,10 @@
         "name": "graphDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Prepared", "value": "builtin" },
-          { "label": "Import", "value": "custom" }
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
         ],
-        "value": "builtin"
+        "value": "custom"
       },
       "builtinGNNDatasetRow": {
         "type": "rowContainer",
@@ -207,16 +204,12 @@
             "type": "select",
             "label": "Prepared dataset",
             "name": "graphBuiltinDataset",
-            "value": "cora",
+            "value": "JODIE",
             "options": [
-              { "value": "cora", "label": "Cora Citation Network" },
-              { "value": "citeseer", "label": "CiteSeer Network" },
-              { "value": "pubmed", "label": "PubMed Diabetes Network" },
-              { "value": "pattern", "label": "PATTERN (GNNBenchmarkDataset)" },
-              { "value": "cluster", "label": "CLUSTER (GNNBenchmarkDataset)" },
-              { "value": "ogbn-arxiv", "label": "ogbn-arxiv (OGB)" }
+              { "value": "JODIE", "label": "JODIE (Datasets/JODIE)" },
+              { "value": "QM9", "label": "QM9 (Datasets/QM9)" }
             ],
-            "help": "Planetoid, GNNBenchmarkDataset, or OGB graph datasets, downloaded automatically."
+            "help": "Planetoid, GNNBenchmarkDataset, OGB, or HPRC cluster datasets."
           }
         }
       },
@@ -270,10 +263,10 @@
         "name": "genDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Prepared", "value": "builtin" },
-          { "label": "Import", "value": "custom" }
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
         ],
-        "value": "builtin"
+        "value": "custom"
       },
       "builtinGenDatasetRow": {
         "type": "rowContainer",
@@ -284,12 +277,11 @@
             "type": "select",
             "label": "Prepared dataset",
             "name": "genBuiltinDataset",
-            "value": "MNIST",
+            "value": "llava-onevision",
             "options": [
-              { "value": "MNIST", "label": "MNIST" },
-              { "value": "FashionMNIST", "label": "Fashion-MNIST" }
+              { "value": "llava-onevision", "label": "LLaVA-OneVision (Datasets/llava-onevision)" }
             ],
-            "help": "Image datasets for generative learning."
+            "help": "Image datasets or multimodal cluster datasets for generative learning."
           }
         }
       },
@@ -306,7 +298,7 @@
             "localLabel": "cluster",
             "showFiles": "False",
             "files": "False",
-            "help": "Root directory with train/ and val/ subdirectories."
+            "help": "Root directory containing train/ and val/ subdirectories. Each class is a subfolder containing standard raw images (.png, .jpg, .jpeg) to reconstruct."
           }
         }
       }
@@ -434,18 +426,9 @@
     }
   },
 
-  "SlurmCheckbox": {
-    "type": "checkbox",
-    "label": "Set Job requirements",
-    "name": "slurmbox",
-    "help": "Check this box if you want to set Slurm options.",
-    "value": "Yes"
-  },
-
   "ContainerTasks": {
     "type": "rowContainer",
     "label": "GPU",
-    "condition": "slurmbox.Yes",
     "elements": {
       "cpus": {
         "type": "number",
@@ -458,7 +441,7 @@
         "type": "dynamicSelect",
         "label": "Use Accelerator",
         "name": "gpu",
-        "value": "none",
+        "value": "",
         "help": "Optional. Defaults to CPU (no accelerator). Select a GPU only if your training will use it.",
         "retriever": "retrieve_gpus"
       },
@@ -475,7 +458,6 @@
   "ContainerAdditionals": {
     "type": "rowContainer",
     "label": "Slurm Options",
-    "condition": "slurmbox.Yes",
     "elements": {
       "memory": {
         "type": "unit",

@@ -3,17 +3,17 @@
 cluster=`/sw/local/bin/clustername`
 case $cluster in
     aces)
-	    echo "[ { \"value\": \"none\", \"label\": \"NONE\" },  { \"value\": \"h100\", \"label\": \"H100\" }, { \"value\": \"a30\", \"label\": \"A30\" } , { \"value\": \"pvc\", \"label\": \"PVC\" }]"
+	    echo "[ { \"value\": \"\", \"label\": \"NONE\" },  { \"value\": \"h100\", \"label\": \"H100\" }, { \"value\": \"a30\", \"label\": \"A30\" } ]"
 	;;
     grace)
-        echo "[ { \"value\": \"none\", \"label\": \"NONE\" }, { \"value\": \"t4\", \"label\": \"T4\" }, { \"value\": \"a40\", \"label\": \"A40\" } , { \"value\": \"rtx\", \"label\": \"RTX\" }  ]"
+        echo "[ { \"value\": \"\", \"label\": \"NONE\" }, { \"value\": \"t4\", \"label\": \"T4\" }, { \"value\": \"a40\", \"label\": \"A40\" } , { \"value\": \"rtx\", \"label\": \"RTX\" }  ]"
         ;;
     faster)
-        echo "[ { \"value\": \"none\", \"label\": \"NONE\" }, { \"value\": \"t4\", \"label\": \"T4\" }, { \"value\": \"a40\", \"label\": \"A40\" } , { \"value\": \"a30\", \"label\": \"A30\" } , { \"value\": \"a10\", \"label\": \"A10\" }   ]"
+        echo "[ { \"value\": \"\", \"label\": \"NONE\" }, { \"value\": \"t4\", \"label\": \"T4\" }, { \"value\": \"a40\", \"label\": \"A40\" } , { \"value\": \"a30\", \"label\": \"A30\" } , { \"value\": \"a10\", \"label\": \"A10\" }   ]"
         ;;
     launch)
-       echo "[ { \"value\": \"none\", \"label\": \"NONE\" },  { \"value\": \"a30\", \"label\": \"A30\" } ]"
+       echo "[ { \"value\": \"\", \"label\": \"NONE\" },  { \"value\": \"a30\", \"label\": \"A30\" } ]"
 	;;       
     *)
-        echo "[ { \"value\": \"none\", \"label\": \"NONE\" } ]"
+        echo "[ { \"value\": \"\", \"label\": \"NONE\" } ]"
 esac
