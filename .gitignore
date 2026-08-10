@@ -1,1 +1,8 @@
 /TestRun/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+verify_output/
+.DS_Store

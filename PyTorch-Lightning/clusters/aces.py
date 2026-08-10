@@ -56,10 +56,6 @@ def cluster_slurm_checks(nodenum,tasknum,cpunum,totalmemnum,gpu,numgpunum,timest
       if numgpunum > 32:
          drona_add_message("Max limit of 32 GPUs, you requested "+str(numgpunum) + ". Setting number of GPUs to 32.", "warning")
       sbatchgpustring=" --gres=gpu:"+gpu+":"+str(numgpunum)
-   elif gpu == "pvc":
-      drona_add_message("Intel PVC GPUs are not supported in the PyTorch-Lightning environment.", "error")
-      partition="pvc"
-      sbatchgpustring=" --gres=gpu:"+gpu+":"+str(numgpunum)
    elif gpu != "" and gpu != "none":
       partition="gpu"
       sbatchgpustring=" --gres=gpu:"+gpu+":"+str(numgpunum)

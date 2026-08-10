@@ -19,12 +19,12 @@
         "type": "select",
         "name": "modelCategory",
         "label": "Model category",
-        "help": "Select the model category:\\n- Computer Vision: Classification with MLP/CNN networks.\\n- Sequential: Recurrent LSTM networks for time-series forecasting/classification.\\n- Graph Neural Networks: Node classification on graphs (GCN).\\n- Generative Models: VAE for image reconstruction and latent spaces.\\n- Custom: A bare-bones, highly commented blueprint for any user model.",
+        "help": "Select the model category:\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Graph Neural Networks: Node-level and graph-level message-passing networks using PyTorch Geometric (PyG).\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.\\n- Custom: A bare-bones, highly commented blueprint for any user model.",
         "options": [
           { "label": "Computer Vision", "value": "computer_vision" },
           { "label": "Sequential / Time-Series", "value": "sequential" },
           { "label": "Graph Neural Networks (GNN)", "value": "gnn" },
-          { "label": "Generative Models (VAE)", "value": "generative" },
+          { "label": "Generative Models", "value": "generative" },
           { "label": "Custom (Bare-bones)", "value": "custom" }
         ],
         "value": "custom"
@@ -74,6 +74,20 @@
         "help": "Path to dataset root with train/ and val/ subdirectories. Each class must be a subfolder (class name) containing standard raw images (.png, .jpg, .jpeg) corresponding to that class.",
         "condition": "datasetType.custom",
         "files": "False"
+      },
+      "cvModelArch": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "cvModelArch",
+        "value": "cnn",
+        "options": [
+          { "value": "cnn", "label": "CNN Classification" },
+          { "value": "mlp", "label": "MLP Classification" },
+          { "value": "vit", "label": "Vision Transformer (ViT)" },
+          { "value": "unet", "label": "U-Net Semantic Segmentation" }
+        ],
+        "condition": "datasetType.custom",
+        "help": "Select model architecture for your custom image dataset."
       }
     }
   },
@@ -140,9 +154,23 @@
 
   "ContainerSeqSettings": {
     "type": "rowContainer",
-    "label": "LSTM Settings",
+    "label": "Sequence Settings",
     "condition": "modelCategory.sequential",
     "elements": {
+      "seqModelType": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "seqModelType",
+        "value": "lstm",
+        "options": [
+          { "value": "lstm", "label": "LSTM (Long Short-Term Memory)" },
+          { "value": "gru", "label": "GRU (Gated Recurrent Unit)" },
+          { "value": "cnn1d", "label": "1D CNN (Temporal ConvNet)" },
+          { "value": "transformer", "label": "Transformer Encoder" }
+        ],
+        "condition": "seqDatasetType.custom",
+        "help": "Select sequence modeling architecture for custom dataset."
+      },
       "seqTaskType": {
         "type": "radioGroup",
         "name": "seqTaskType",
@@ -235,9 +263,21 @@
 
   "ContainerGNNSettings": {
     "type": "rowContainer",
-    "label": "GCN Settings",
+    "label": "GNN Settings",
     "condition": "modelCategory.gnn",
     "elements": {
+      "gnnLayerType": {
+        "type": "select",
+        "label": "GNN layer type",
+        "name": "gnnLayerType",
+        "value": "gcn",
+        "options": [
+          { "value": "gcn", "label": "GCN (Graph Convolutional Network)" },
+          { "value": "gat", "label": "GAT (Graph Attention Network)" },
+          { "value": "graphsage", "label": "GraphSAGE" }
+        ],
+        "help": "Select the GNN layer type used in message passing layers."
+      },
       "gnnHiddenDim": {
         "type": "number",
         "label": "Hidden channels",
@@ -307,9 +347,21 @@
 
   "ContainerGenSettings": {
     "type": "rowContainer",
-    "label": "VAE Settings",
+    "label": "Generative Settings",
     "condition": "modelCategory.generative",
     "elements": {
+      "genModelType": {
+        "type": "select",
+        "label": "Model type",
+        "name": "genModelType",
+        "value": "vae",
+        "options": [
+          { "value": "vae", "label": "VAE (Variational Autoencoder)" },
+          { "value": "gan", "label": "GAN (Generative Adversarial Network)" },
+          { "value": "diffusion", "label": "Diffusion Model (DDPM)" }
+        ],
+        "help": "Select the generative model architecture."
+      },
       "latentDim": {
         "type": "number",
         "label": "Latent dimension (z)",
