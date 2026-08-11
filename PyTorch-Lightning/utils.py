@@ -227,7 +227,10 @@ def setup_pytorch_modules(
     base = getattr(cluster_module, "pytorch_lightning_modules", DEFAULT_PT_MODULES)
 
     torchvision_cmd = ""
-    if model_category == "computer_vision" and ds_t == "builtin" and builtin_dataset == "ImageNet":
+    if model_category == "computer_vision" or (
+        model_category == "generative"
+        and (ds_t == "custom" or gen_dataset == "llava-onevision")
+    ):
         if "CUDA-12.6.0" in base:
             # Overwrite base modules to GCC/12.3.0 OpenMPI/4.1.5 to make torchvision/0.16.0-CUDA-12.1.1 available
             # and avoid the Lmod toolchain swap that deactivates the CUDA-12.6.0 packages.
@@ -760,6 +763,8 @@ def generate_lightning_script_if_run(
     seqModelType="lstm",
     gnnLayerType="gcn",
     genModelType="vae",
+    cvDatasetFormat="tensors",
+    genDatasetFormat="tensors",
 ):
     if mode == "monitor":
         return ""
@@ -781,6 +786,8 @@ def generate_lightning_script_if_run(
         seqModelType,
         gnnLayerType,
         genModelType,
+        cvDatasetFormat,
+        genDatasetFormat,
     )
 
 
@@ -834,6 +841,8 @@ def generate_lightning_script(
     seqModelType="lstm",
     gnnLayerType="gcn",
     genModelType="vae",
+    cvDatasetFormat="tensors",
+    genDatasetFormat="tensors",
 ):
     # ── Parse & validate shared params ────────────────────────────────────────
     category = (modelCategory or "computer_vision").strip()
@@ -898,6 +907,7 @@ def generate_lightning_script(
             ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
             logger_lines, callback_block,
             cv_model_arch=cvModelArch,
+            cv_dataset_format=cvDatasetFormat,
         )
 
     elif category == "sequential":
@@ -948,6 +958,7 @@ def generate_lightning_script(
             ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
             logger_lines, callback_block,
             gen_model_type=genModelType,
+            gen_dataset_format=genDatasetFormat,
         )
 
     elif category == "custom":

@@ -20,6 +20,7 @@ def _gen_generative_script(
     ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
     logger_lines, callback_block,
     gen_model_type="vae",
+    gen_dataset_format="tensors",
 ):
     """Returns (train_script, prefetch_script_or_None)."""
     cache_dir = "./data"
@@ -80,7 +81,31 @@ if __name__ == "__main__":
             _drona_msg("Custom image folder path is required for Generative model.", "error")
             return None, None
         in_ch, img_sz = 3, 64   # sensible default for custom folders
-        dm = f'''class LitDataModule(L.LightningDataModule):
+        if gen_dataset_format == "images":
+            dm = f'''class LitDataModule(L.LightningDataModule):
+    """DataModule managing custom folder-based raw image datasets for VAE."""
+    def __init__(self, data_root="{_py_str(gen_custom_path)}", batch_size={bs}, num_workers={nw}):
+        super().__init__()
+        self.data_root = data_root
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.transform = transforms.Compose([
+            transforms.Resize(({img_sz}, {img_sz})),
+            transforms.ToTensor(),
+        ])
+
+    def setup(self, stage=None):
+        self.train_ds = ImageFolder(os.path.join(self.data_root, "train"), transform=self.transform)
+        self.val_ds = ImageFolder(os.path.join(self.data_root, "val"), transform=self.transform)
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+'''
+        else:
+            dm = f'''class LitDataModule(L.LightningDataModule):
     """DataModule managing custom folder-based tensor datasets for VAE."""
     def __init__(self, data_root="{_py_str(gen_custom_path)}", batch_size={bs}, num_workers={nw}):
         super().__init__()
@@ -349,7 +374,7 @@ if __name__ == "__main__":
 
     template = _load_template("generative")
     train_script = template.replace("# __LIGHTNING_IMPORT_BLOCK__", _LIGHTNING_IMPORT_BLOCK.strip())
-    train_script = train_script.replace("# __ADDITIONAL_IMPORTS__", _get_additional_imports("builtin" if use_builtin else "custom", gen_dataset_type if use_builtin else "").strip())
+    train_script = train_script.replace("# __ADDITIONAL_IMPORTS__", _get_additional_imports("builtin" if use_builtin else "custom", gen_dataset_type if use_builtin else "", dataset_format=gen_dataset_format).strip())
     train_script = train_script.replace("__DATA_DIR__", _py_str(cache_dir))
     train_script = train_script.replace("__LOG_DIR__", _py_str(log_dir))
     train_script = train_script.replace("__EXPERIMENT_NAME__", _py_str(exp_name))
@@ -368,7 +393,7 @@ if __name__ == "__main__":
     train_script = train_script.replace("__FLAT_SIZE__", str(flat_size))
     
     # Generate dynamic helpers tailored only to the chosen dataset
-    data_helpers = _get_data_helpers("builtin" if use_builtin else "custom", gen_dataset_type if use_builtin else "", cv_model_arch="cnn")
+    data_helpers = _get_data_helpers("builtin" if use_builtin else "custom", gen_dataset_type if use_builtin else "", cv_model_arch="cnn", dataset_format=gen_dataset_format)
     train_script = train_script.replace("# __DATA_HELPERS_BLOCK__", data_helpers.strip())
     
     train_script = train_script.replace("# __DATAMODULE_BLOCK__", dm.strip())

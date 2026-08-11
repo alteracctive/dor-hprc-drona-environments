@@ -21,11 +21,11 @@
         "label": "Model category",
         "help": "Select the model category:\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Graph Neural Networks: Node-level and graph-level message-passing networks using PyTorch Geometric (PyG).\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.\\n- Custom: A bare-bones, highly commented blueprint for any user model.",
         "options": [
-          { "label": "Computer Vision", "value": "computer_vision" },
-          { "label": "Sequential / Time-Series", "value": "sequential" },
-          { "label": "Graph Neural Networks (GNN)", "value": "gnn" },
-          { "label": "Generative Models", "value": "generative" },
-          { "label": "Custom (Bare-bones)", "value": "custom" }
+          { "label": "Computer Vision (Classification, segmentation, ViT)", "value": "computer_vision" },
+          { "label": "Sequential / Time-Series (LSTMs, GRUs, 1D CNNs, Transformers)", "value": "sequential" },
+          { "label": "Graph Neural Networks (GNN) (Node/graph-level using PyG)", "value": "gnn" },
+          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" },
+          { "label": "Custom (Bare-bones blueprint)", "value": "custom" }
         ],
         "value": "custom"
       }
@@ -88,6 +88,18 @@
         ],
         "condition": "datasetType.custom",
         "help": "Select model architecture for your custom image dataset."
+      },
+      "cvDatasetFormat": {
+        "type": "radioGroup",
+        "label": "Dataset format",
+        "name": "cvDatasetFormat",
+        "value": "tensors",
+        "options": [
+          { "label": "Raw Images (.png, .jpg, etc.)", "value": "images" },
+          { "label": "PyTorch Tensors (.pt)", "value": "tensors" }
+        ],
+        "condition": "datasetType.custom",
+        "help": "Choose whether your custom data folder contains raw images (organized by class subdirectories, or image/mask subdirectories for UNet) or pre-processed PyTorch tensor (.pt) files."
       }
     }
   },
@@ -339,6 +351,17 @@
             "showFiles": "False",
             "files": "False",
             "help": "Root directory containing train/ and val/ subdirectories. Each class is a subfolder containing standard raw images (.png, .jpg, .jpeg) to reconstruct."
+          },
+          "genDatasetFormat": {
+            "type": "radioGroup",
+            "label": "Dataset format",
+            "name": "genDatasetFormat",
+            "value": "tensors",
+            "options": [
+              { "label": "Raw Images (.png, .jpg, etc.)", "value": "images" },
+              { "label": "PyTorch Tensors (.pt)", "value": "tensors" }
+            ],
+            "help": "Choose whether your custom data folder contains raw images or pre-processed PyTorch tensor (.pt) files."
           }
         }
       }

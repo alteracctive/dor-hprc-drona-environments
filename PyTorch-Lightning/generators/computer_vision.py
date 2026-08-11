@@ -14,6 +14,7 @@ def _gen_computer_vision_script(
     ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
     logger_lines, callback_block,
     cv_model_arch="cnn",
+    cv_dataset_format="tensors",
 ):
     """Returns (train_script, prefetch_script_or_None)."""
     cache_dir = "./data"
@@ -50,7 +51,27 @@ def _gen_computer_vision_script(
             raise ValueError(f"Unsupported prepared dataset: {builtin}")
     else:
         if cv_model_arch == "unet":
-            dm = f'''class LitDataModule(L.LightningDataModule):
+            if cv_dataset_format == "images":
+                dm = f'''class LitDataModule(L.LightningDataModule):
+    """DataModule managing custom semantic segmentation datasets from raw images."""
+    def __init__(self, data_root="{_py_str(custom_path)}", batch_size={bs}, num_workers={nw}):
+        super().__init__()
+        self.data_root = data_root
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+
+    def setup(self, stage=None):
+        self.train_ds = ImageSegmentationDataset(os.path.join(self.data_root, "train"), image_size=224)
+        self.val_ds = ImageSegmentationDataset(os.path.join(self.data_root, "val"), image_size=224)
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+'''
+            else:
+                dm = f'''class LitDataModule(L.LightningDataModule):
     """DataModule managing custom semantic segmentation datasets."""
     def __init__(self, data_root="{_py_str(custom_path)}", batch_size={bs}, num_workers={nw}):
         super().__init__()
@@ -70,7 +91,32 @@ def _gen_computer_vision_script(
 '''
             ch, nc, sz, arch = 3, 1, 224, "unet"
         else:
-            dm = f'''class LitDataModule(L.LightningDataModule):
+            if cv_dataset_format == "images":
+                dm = f'''class LitDataModule(L.LightningDataModule):
+    """DataModule managing custom folder-based raw image datasets."""
+    def __init__(self, data_root="{_py_str(custom_path)}", batch_size={bs}, num_workers={nw}):
+        super().__init__()
+        self.data_root = data_root
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ])
+
+    def setup(self, stage=None):
+        self.train_ds = ImageFolder(os.path.join(self.data_root, "train"), transform=self.transform)
+        self.val_ds = ImageFolder(os.path.join(self.data_root, "val"), transform=self.transform)
+        self.num_classes = len(self.train_ds.classes)
+
+    def train_dataloader(self):
+        return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+'''
+            else:
+                dm = f'''class LitDataModule(L.LightningDataModule):
     """DataModule managing custom folder-based tensor datasets."""
     def __init__(self, data_root="{_py_str(custom_path)}", batch_size={bs}, num_workers={nw}):
         super().__init__()
@@ -93,7 +139,7 @@ def _gen_computer_vision_script(
             ch, nc, sz, arch = 3, "num_classes", 224, cv_model_arch
 
     if arch == "cnn":
-        nc_arg = nc if ds_type == "builtin" else "num_classes"
+        nc_arg = nc if ds_type == "builtin" else "10"
         model_block = f'''class LitModel(L.LightningModule):
     """Convolutional Neural Network model for multi-class image classification."""
     def __init__(self, lr={lr}, num_classes={nc_arg}, in_channels={ch}):
@@ -141,9 +187,10 @@ def _gen_computer_vision_script(
         )
     elif arch == "mlp":
         flat = sz * sz
+        nc_arg = nc if ds_type == "builtin" else "10"
         model_block = f'''class LitModel(L.LightningModule):
     """Multi-layer Perceptron (MLP) model for multi-class classification."""
-    def __init__(self, lr={lr}, num_classes={nc}, input_size={flat}):
+    def __init__(self, lr={lr}, num_classes={nc_arg}, input_size={flat}):
         super().__init__()
         self.save_hyperparameters()
         
@@ -181,7 +228,7 @@ def _gen_computer_vision_script(
 '''
         model_init = f"model = LitModel(lr=LR, num_classes={nc})"
     elif arch == "vit":
-        nc_arg = nc if ds_type == "builtin" else "num_classes"
+        nc_arg = nc if ds_type == "builtin" else "10"
         model_block = f'''class PatchEmbedding(nn.Module):
     def __init__(self, in_channels, patch_size, embed_dim):
         super().__init__()
@@ -316,7 +363,7 @@ class LitModel(L.LightningModule):
 
     template = _load_template("computer_vision")
     train_script = template.replace("# __LIGHTNING_IMPORT_BLOCK__", _LIGHTNING_IMPORT_BLOCK.strip())
-    train_script = train_script.replace("# __ADDITIONAL_IMPORTS__", _get_additional_imports(ds_type, builtin).strip())
+    train_script = train_script.replace("# __ADDITIONAL_IMPORTS__", _get_additional_imports(ds_type, builtin, dataset_format=cv_dataset_format).strip())
     train_script = train_script.replace("__DATA_DIR__", _py_str(cache_dir))
     train_script = train_script.replace("__LOG_DIR__", _py_str(log_dir))
     train_script = train_script.replace("__EXPERIMENT_NAME__", _py_str(exp_name))
@@ -331,7 +378,7 @@ class LitModel(L.LightningModule):
     train_script = train_script.replace("__SEED__", str(seed_val))
     
     # Generate dynamic helpers tailored only to the chosen dataset
-    data_helpers = _get_data_helpers(ds_type, builtin, cv_model_arch=cv_model_arch)
+    data_helpers = _get_data_helpers(ds_type, builtin, cv_model_arch=cv_model_arch, dataset_format=cv_dataset_format)
     train_script = train_script.replace("# __DATA_HELPERS_BLOCK__", data_helpers.strip())
     
     train_script = train_script.replace("# __DATAMODULE_BLOCK__", dm.strip())

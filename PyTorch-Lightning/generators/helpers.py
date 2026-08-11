@@ -285,7 +285,7 @@ except ImportError:
     from lightning.pytorch.callbacks import ModelCheckpoint
 '''
 
-def _get_additional_imports(ds_type, dataset_name):
+def _get_additional_imports(ds_type, dataset_name, dataset_format="tensors"):
     """Returns dynamic imports tailored to the specific dataset to avoid redundancies."""
     imports = []
     if ds_type == "custom":
@@ -293,6 +293,11 @@ def _get_additional_imports(ds_type, dataset_name):
         imports.append("import torch.nn.functional as F")
         imports.append("from torch.utils.data import Dataset")
         imports.append("from pathlib import Path")
+        if dataset_format == "images":
+            imports.append("import torchvision.transforms as transforms")
+            imports.append("from torchvision.datasets import ImageFolder")
+            imports.append("from PIL import Image")
+            imports.append("import torchvision.transforms.functional as TF")
     else:  # builtin
         if dataset_name in ("MNIST", "FashionMNIST"):
             imports.append("import gzip")
@@ -364,12 +369,62 @@ fi
 echo "$TB_PORT"
 '''
 
-def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn"):
+def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format="tensors"):
     """
     Returns only the necessary dataset loading helper functions and classes
     for the generated script, eliminating unused dataset handlers and boilerplate.
     """
     if ds_type == "custom":
+        if dataset_format == "images":
+            if cv_model_arch == "unet":
+                return '''class ImageSegmentationDataset(Dataset):
+    """
+    Custom Dataset loader for semantic segmentation of standard image files.
+    Reads image and mask files (.png, .jpg, .jpeg, .bmp)
+    organized under root/images/ and root/masks/ directories.
+    """
+    def __init__(self, root, image_size=224):
+        self.root = Path(root)
+        self.image_size = image_size
+        self.img_dir = self.root / "images"
+        self.mask_dir = self.root / "masks"
+        if not self.img_dir.is_dir() or not self.mask_dir.is_dir():
+            raise FileNotFoundError(f"Segmentation folders 'images' and 'masks' must exist under {self.root}")
+        
+        valid_exts = ('.png', '.jpg', '.jpeg', '.bmp')
+        self.img_files = sorted(
+            [p for p in self.img_dir.iterdir() if p.suffix.lower() in valid_exts]
+        )
+        
+    def __len__(self):
+        return len(self.img_files)
+        
+    def __getitem__(self, idx):
+        img_path = self.img_files[idx]
+        mask_path = None
+        for ext in ('.png', '.jpg', '.jpeg', '.bmp'):
+            candidate = self.mask_dir / f"{img_path.stem}{ext}"
+            if candidate.exists():
+                mask_path = candidate
+                break
+                
+        if mask_path is None:
+            raise FileNotFoundError(f"Corresponding mask not found for image: {img_path.name}")
+            
+        img = Image.open(img_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L")
+        
+        img = img.resize((self.image_size, self.image_size), Image.BILINEAR)
+        mask = mask.resize((self.image_size, self.image_size), Image.NEAREST)
+        
+        x = TF.to_tensor(img)
+        y = TF.to_tensor(mask)
+        
+        return x, y
+'''
+            else:
+                return ""
+
         if cv_model_arch == "unet":
             return '''class TensorSegmentationDataset(Dataset):
     """
