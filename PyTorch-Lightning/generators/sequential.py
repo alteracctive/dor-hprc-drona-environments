@@ -81,6 +81,20 @@ def _gen_sequential_script(
         self.feat_std = features.std(axis=0) + 1e-8
         features = (features - self.feat_mean) / self.feat_std
         
+        # Save generated dataset to CSV for user inspection
+        if train:
+            try:
+                import csv
+                csv_path = "synthetic_sequential_dataset.csv"
+                with open(csv_path, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["step", "value"])
+                    for step, val in enumerate(signal):
+                        writer.writerow([step, float(val)])
+                print(f"Saved synthetic sequential dataset for inspection to: {{os.path.abspath(csv_path)}}")
+            except Exception as e:
+                print(f"Failed to save synthetic dataset CSV: {{e}}")
+
         self.features = features[:split] if train else features[split:]
         self.target = target[:split] if train else target[split:]
         self.num_features = 1'''
@@ -133,6 +147,20 @@ def _gen_sequential_script(
         self.feat_std = features.std(axis=0) + 1e-8
         features = (features - self.feat_mean) / self.feat_std
         
+        # Save generated dataset to CSV for user inspection
+        if train:
+            try:
+                import csv
+                csv_path = "synthetic_sequential_dataset.csv"
+                with open(csv_path, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["step", "value"])
+                    for step, val in enumerate(signal):
+                        writer.writerow([step, float(val)])
+                print(f"Saved synthetic sequential dataset for inspection to: {{os.path.abspath(csv_path)}}")
+            except Exception as e:
+                print(f"Failed to save synthetic dataset CSV: {{e}}")
+
         self.features = features[:split] if train else features[split:]
         self.target = target[:split] if train else target[split:]
         self.num_features = 1'''

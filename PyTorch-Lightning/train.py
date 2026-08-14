@@ -25,21 +25,16 @@ except ImportError:
     import lightning as L
     from lightning.pytorch.loggers import TensorBoardLogger
     from lightning.pytorch.callbacks import ModelCheckpoint
-import numpy as np
-import torch.nn.functional as F
-from torch.utils.data import Dataset
-from pathlib import Path
+import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torchvision.datasets import ImageFolder
-from PIL import Image
-import torchvision.transforms.functional as TF
+from torch.utils.data import Dataset
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. Hyperparameters & Configurations
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR = "./data"              # Directory where datasets are downloaded or stored
 LOG_DIR = "./lightning_logs"                # Parent directory for logger output files
-EXPERIMENT_NAME = "lightning_run" # Subdirectory/name for this training run
+EXPERIMENT_NAME = "gen_vae_test" # Subdirectory/name for this training run
 LR = 1e-3                            # Learning rate for the optimizer
 BATCH_SIZE = 32            # Input batch size for training and validation
 NUM_WORKERS = 0          # Number of CPU subprocesses for data loading
@@ -52,31 +47,45 @@ SEED = 42                        # Random seed for reproducibility
 
 # VAE Specific Architecture Parameters
 IN_CHANNELS = 3          # Number of image channels (e.g., 1 for MNIST, 3 for RGB)
-IMAGE_SIZE = 64            # Width and height of input images
+IMAGE_SIZE = 224            # Width and height of input images
 LATENT_DIM = 128            # Dimensionality of the bottleneck latent space (z)
-FLAT_SIZE = 12288              # Flattened image size (IN_CHANNELS * IMAGE_SIZE * IMAGE_SIZE)
+FLAT_SIZE = 150528              # Flattened image size (IN_CHANNELS * IMAGE_SIZE * IMAGE_SIZE)
 
 # ── Data Helpers & Custom Datasets ────────────────────────────────────────────
 # Injected dynamically based on your dataset choice.
-
+def load_builtin_dataset(name, data_dir, train):
+    """Loads custom folder datasets utilizing standard torchvision ImageFolder."""
+    env_var = "CC3M_PATH" if name == "CC3M" else ("CAMUS_PATH" if name == "CAMUS" else "LLaVA_OneVision_PATH")
+    path = os.environ.get(env_var, "")
+    split = "train" if train else "val"
+    transform = transforms.Compose([transforms.Resize(224), transforms.CenterCrop(224), transforms.ToTensor()])
+    try:
+        return datasets.ImageFolder(os.path.join(path, split), transform=transform)
+    except Exception:
+        try:
+            return datasets.ImageFolder(path, transform=transform)
+        except Exception:
+            class DummyDataset(Dataset):
+                def __len__(self): return 1000
+                def __getitem__(self, idx):
+                    return torch.rand(3, 224, 224), 0
+            return DummyDataset()
 
 # ── DataModule ────────────────────────────────────────────────────────────────
 # Controls dataset setup, downloads, splits, and DataLoader instantiation.
 class LitDataModule(L.LightningDataModule):
-    """DataModule managing custom folder-based raw image datasets for VAE."""
-    def __init__(self, data_root="/path/to/custom", batch_size=32, num_workers=0):
+    """DataModule managing downloads, setup, and data loading for VAE builtin datasets."""
+    def __init__(self, data_dir=DATA_DIR, batch_size=32, num_workers=0):
         super().__init__()
-        self.data_root = data_root
+        self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.transform = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-        ])
+        self.dataset_name = "llava-onevision"
 
     def setup(self, stage=None):
-        self.train_ds = ImageFolder(os.path.join(self.data_root, "train"), transform=self.transform)
-        self.val_ds = ImageFolder(os.path.join(self.data_root, "val"), transform=self.transform)
+        # Load train and validation dataset splits
+        self.train_ds = load_builtin_dataset(self.dataset_name, self.data_dir, train=True)
+        self.val_ds = load_builtin_dataset(self.dataset_name, self.data_dir, train=False)
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
@@ -91,7 +100,7 @@ class LitModel(L.LightningModule):
     Optimizes the Evidence Lower Bound (ELBO): reconstruction loss + KL divergence.
     """
 
-    def __init__(self, flat_size=12288, latent_dim=128, lr=1e-3):
+    def __init__(self, flat_size=150528, latent_dim=128, lr=1e-3):
         super().__init__()
         self.save_hyperparameters()
 
@@ -162,7 +171,7 @@ class LitModel(L.LightningModule):
 # ── Logger Setup ─────────────────────────────────────────────────────────────
 def build_loggers():
     loggers = [
-    TensorBoardLogger(save_dir=LOG_DIR, name="lightning_run"),
+    TensorBoardLogger(save_dir=LOG_DIR, name="gen_vae_test"),
     ]
     return [lg for lg in loggers if lg is not False]
 

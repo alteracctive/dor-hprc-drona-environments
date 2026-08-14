@@ -19,13 +19,15 @@
         "type": "select",
         "name": "modelCategory",
         "label": "Model category",
-        "help": "Select the model category:\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Graph Neural Networks: Node-level and graph-level message-passing networks using PyTorch Geometric (PyG).\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.\\n- Custom: A bare-bones, highly commented blueprint for any user model.",
+        "help": "Select the model category:\\n- Custom: A bare-bones, highly commented blueprint for any user model.\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Natural Language Processing (Native Torchtext/PyTorch): Sequence-to-sequence, text classification, and custom lightweight Attention/Transformer blocks without overhead.\\n- Tabular & Structured Data Deep Learning: DeepMLPs, ResNets for Tabular, or TabNet primitives.\\n- Audio & Signal Processing: Speech processing, acoustic classification, and waveform synthesis using native torchaudio transforms.\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.",
         "options": [
+          { "label": "Custom (Bare-bones blueprint)", "value": "custom" },
           { "label": "Computer Vision (Classification, segmentation, ViT)", "value": "computer_vision" },
           { "label": "Sequential / Time-Series (LSTMs, GRUs, 1D CNNs, Transformers)", "value": "sequential" },
-          { "label": "Graph Neural Networks (GNN) (Node/graph-level using PyG)", "value": "gnn" },
-          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" },
-          { "label": "Custom (Bare-bones blueprint)", "value": "custom" }
+          { "label": "Natural Language Processing (Native Torchtext/PyTorch)", "value": "nlp" },
+          { "label": "Tabular & Structured Data Deep Learning", "value": "tabular" },
+          { "label": "Audio & Signal Processing", "value": "audio" },
+          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" }
         ],
         "value": "custom"
       }
@@ -220,90 +222,6 @@
     }
   },
 
-  "ContainerGNNDataset": {
-    "type": "rowContainer",
-    "label": "Graph Dataset",
-    "condition": "modelCategory.gnn",
-    "elements": {
-      "graphDatasetType": {
-        "type": "radioGroup",
-        "name": "graphDatasetType",
-        "label": "Dataset source",
-        "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
-        ],
-        "value": "custom"
-      },
-      "builtinGNNDatasetRow": {
-        "type": "rowContainer",
-        "label": "",
-        "condition": "graphDatasetType.builtin",
-        "elements": {
-          "graphBuiltinDataset": {
-            "type": "select",
-            "label": "Prepared dataset",
-            "name": "graphBuiltinDataset",
-            "value": "JODIE",
-            "options": [
-              { "value": "JODIE", "label": "JODIE (Datasets/JODIE)" },
-              { "value": "QM9", "label": "QM9 (Datasets/QM9)" }
-            ],
-            "help": "Planetoid, GNNBenchmarkDataset, OGB, or HPRC cluster datasets."
-          }
-        }
-      },
-      "customGNNDatasetRow": {
-        "type": "rowContainer",
-        "label": "",
-        "condition": "graphDatasetType.custom",
-        "elements": {
-          "graphDataPath": {
-            "type": "picker",
-            "label": "Custom graph directory",
-            "name": "graphDataPath",
-            "remoteLabel": "local",
-            "localLabel": "cluster",
-            "showFiles": "False",
-            "files": "False",
-            "help": "Directory containing a data.pt file (a PyG Data object)."
-          }
-        }
-      }
-    }
-  },
-
-  "ContainerGNNSettings": {
-    "type": "rowContainer",
-    "label": "GNN Settings",
-    "condition": "modelCategory.gnn",
-    "elements": {
-      "gnnLayerType": {
-        "type": "select",
-        "label": "GNN layer type",
-        "name": "gnnLayerType",
-        "value": "gcn",
-        "options": [
-          { "value": "gcn", "label": "GCN (Graph Convolutional Network)" },
-          { "value": "gat", "label": "GAT (Graph Attention Network)" },
-          { "value": "graphsage", "label": "GraphSAGE" }
-        ],
-        "help": "Select the GNN layer type used in message passing layers."
-      },
-      "gnnHiddenDim": {
-        "type": "number",
-        "label": "Hidden channels",
-        "name": "gnnHiddenDim",
-        "value": "64"
-      },
-      "gnnNumLayers": {
-        "type": "number",
-        "label": "GCN layers",
-        "name": "gnnNumLayers",
-        "value": "2"
-      }
-    }
-  },
 
   "ContainerGenDataset": {
     "type": "rowContainer",
@@ -412,6 +330,241 @@
     }
   },
 
+  "ContainerNLPDataset": {
+    "type": "rowContainer",
+    "label": "NLP Dataset",
+    "condition": "modelCategory.nlp",
+    "elements": {
+      "nlpDatasetType": {
+        "type": "radioGroup",
+        "name": "nlpDatasetType",
+        "label": "Dataset source",
+        "options": [
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
+        ],
+        "value": "custom"
+      },
+      "builtinNLPDatasetRow": {
+        "type": "rowContainer",
+        "label": "",
+        "condition": "nlpDatasetType.builtin",
+        "elements": {
+          "nlpBuiltinDataset": {
+            "type": "select",
+            "label": "Prepared dataset",
+            "name": "nlpBuiltinDataset",
+            "value": "fastText",
+            "options": [
+              { "value": "fastText", "label": "fastText (Datasets/fastText)" }
+            ],
+            "help": "HPRC cluster datasets for NLP/Text classification."
+          }
+        }
+      },
+      "nlpCustomPath": {
+        "type": "picker",
+        "label": "Custom text/CSV file",
+        "name": "nlpCustomPath",
+        "remoteLabel": "local",
+        "localLabel": "cluster",
+        "showFiles": "True",
+        "files": "True",
+        "help": "Select a custom text file or CSV containing raw text or sequence inputs.",
+        "condition": "nlpDatasetType.custom"
+      }
+    }
+  },
+
+  "ContainerNLPSettings": {
+    "type": "rowContainer",
+    "label": "NLP Settings",
+    "condition": "modelCategory.nlp",
+    "elements": {
+      "nlpModelType": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "nlpModelType",
+        "value": "attention",
+        "options": [
+          { "value": "attention", "label": "Text Classification (Attention/Transformer)" },
+          { "value": "seq2seq", "label": "Sequence-to-Sequence (Seq2Seq)" }
+        ],
+        "help": "Select NLP modeling architecture."
+      },
+      "nlpMaxSeqLen": {
+        "type": "number",
+        "label": "Max sequence length",
+        "name": "nlpMaxSeqLen",
+        "value": "128",
+        "help": "Max token sequence length for truncation/padding."
+      }
+    }
+  },
+
+  "ContainerTabularDataset": {
+    "type": "rowContainer",
+    "label": "Tabular Dataset",
+    "condition": "modelCategory.tabular",
+    "elements": {
+      "tabDatasetType": {
+        "type": "radioGroup",
+        "name": "tabDatasetType",
+        "label": "Dataset source",
+        "options": [
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
+        ],
+        "value": "custom"
+      },
+      "builtinTabularDatasetRow": {
+        "type": "rowContainer",
+        "label": "",
+        "condition": "tabDatasetType.builtin",
+        "elements": {
+          "tabBuiltinDataset": {
+            "type": "select",
+            "label": "Prepared dataset",
+            "name": "tabBuiltinDataset",
+            "value": "synthetic_tabular",
+            "options": [
+              { "value": "synthetic_tabular", "label": "Synthetic Tabular Dataset (Generated)" }
+            ],
+            "help": "Prepared or synthetically generated tabular dataset."
+          }
+        }
+      },
+      "tabCustomPath": {
+        "type": "picker",
+        "label": "Custom CSV file",
+        "name": "tabCustomPath",
+        "remoteLabel": "local",
+        "localLabel": "cluster",
+        "showFiles": "True",
+        "files": "True",
+        "help": "Select a custom CSV file containing tabular features and targets.",
+        "condition": "tabDatasetType.custom"
+      },
+      "tabTargetColumn": {
+        "type": "text",
+        "label": "Target column",
+        "name": "tabTargetColumn",
+        "value": "target",
+        "condition": "tabDatasetType.custom",
+        "help": "Name of target column in your custom CSV file."
+      }
+    }
+  },
+
+  "ContainerTabularSettings": {
+    "type": "rowContainer",
+    "label": "Tabular Settings",
+    "condition": "modelCategory.tabular",
+    "elements": {
+      "tabModelType": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "tabModelType",
+        "value": "mlp",
+        "options": [
+          { "value": "mlp", "label": "DeepMLP" },
+          { "value": "resnet", "label": "ResNet for Tabular" },
+          { "value": "tabnet", "label": "TabNet Primitives" }
+        ],
+        "help": "Select Tabular deep learning architecture."
+      },
+      "tabTaskType": {
+        "type": "radioGroup",
+        "name": "tabTaskType",
+        "label": "Task type",
+        "options": [
+          { "label": "Regression", "value": "regression" },
+          { "label": "Classification", "value": "classification" }
+        ],
+        "value": "regression",
+        "help": "Choose between regression (continuous values) or classification (discrete classes) for your tabular task."
+      }
+    }
+  },
+
+  "ContainerAudioDataset": {
+    "type": "rowContainer",
+    "label": "Audio Dataset",
+    "condition": "modelCategory.audio",
+    "elements": {
+      "audioDatasetType": {
+        "type": "radioGroup",
+        "name": "audioDatasetType",
+        "label": "Dataset source",
+        "options": [
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
+        ],
+        "value": "custom"
+      },
+      "builtinAudioDatasetRow": {
+        "type": "rowContainer",
+        "label": "",
+        "condition": "audioDatasetType.builtin",
+        "elements": {
+          "audioBuiltinDataset": {
+            "type": "select",
+            "label": "Prepared dataset",
+            "name": "audioBuiltinDataset",
+            "value": "AISHELL",
+            "options": [
+              { "value": "AISHELL", "label": "AISHELL (Datasets/AISHELL)" }
+            ],
+            "help": "Acoustic or speech dataset loaded from cluster module."
+          }
+        }
+      },
+      "audioCustomPath": {
+        "type": "picker",
+        "label": "Custom audio directory",
+        "name": "audioCustomPath",
+        "remoteLabel": "local",
+        "localLabel": "cluster",
+        "showFiles": "False",
+        "files": "False",
+        "help": "Path to dataset root with audio files (arranged by class folder).",
+        "condition": "audioDatasetType.custom"
+      }
+    }
+  },
+
+  "ContainerAudioSettings": {
+    "type": "rowContainer",
+    "label": "Audio Settings",
+    "condition": "modelCategory.audio",
+    "elements": {
+      "audioModelType": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "audioModelType",
+        "value": "classification",
+        "options": [
+          { "value": "classification", "label": "Acoustic Classification" },
+          { "value": "speech", "label": "Speech Processing" },
+          { "value": "synthesis", "label": "Waveform Synthesis" }
+        ],
+        "help": "Select audio modeling task and architecture."
+      },
+      "audioTransformType": {
+        "type": "select",
+        "label": "torchaudio Transform",
+        "name": "audioTransformType",
+        "value": "mel_spectrogram",
+        "options": [
+          { "value": "mel_spectrogram", "label": "Mel-Spectrogram" },
+          { "value": "spectrogram", "label": "Spectrogram" },
+          { "value": "mfcc", "label": "MFCC" }
+        ],
+        "help": "Feature extraction transform to use from torchaudio.transforms."
+      }
+    }
+  },
+
   "ContainerHyperparams": {
     "type": "rowContainer",
     "label": "Training",
@@ -426,20 +579,7 @@
         "type": "number",
         "label": "Batch size",
         "name": "batchSize",
-        "value": "32",
-        "condition": "!modelCategory.gnn"
-      },
-      "precision": {
-        "type": "select",
-        "label": "Precision",
-        "name": "precision",
-        "value": "32",
-        "options": [
-          { "label": "32-bit (FP32)", "value": "32" },
-          { "label": "16-bit (FP16)", "value": "16" }
-        ],
-        "help": "Training precision. 16-bit precision requires GPU/Tensor Core support.",
-        "condition": "modelCategory.gnn"
+        "value": "32"
       },
       "learningRate": {
         "type": "text",
@@ -497,6 +637,13 @@
         "name": "checkpointEnable",
         "value": "Yes",
         "help": "When enabled, saves the best-performing model checkpoint based on minimum validation loss. When disabled, defaults to saving only the final model state at the last epoch."
+      },
+      "exportOnnx": {
+        "type": "checkbox",
+        "label": "Export final model to ONNX",
+        "name": "exportOnnx",
+        "value": "No",
+        "help": "When enabled, exports the trained model to ONNX format (final_model.onnx) at the end of the training run."
       }
     }
   },

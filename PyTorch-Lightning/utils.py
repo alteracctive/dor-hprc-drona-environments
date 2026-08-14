@@ -10,9 +10,11 @@ from pathlib import Path
 from generators import (
     _gen_computer_vision_script,
     _gen_sequential_script,
-    _gen_gnn_script,
     _gen_generative_script,
     _gen_custom_script,
+    _gen_nlp_script,
+    _gen_tabular_script,
+    _gen_audio_script,
 )
 
 
@@ -143,11 +145,7 @@ DEFAULT_PT_MODULES = (
     "module load CUDA/12.1.1 2>/dev/null || true"
 )
 
-# GNN requires a separate stack: PyG 2.1.0 was built against PyTorch 1.12 + CUDA 11.7
-DEFAULT_GNN_MODULES = (
-    "module load GCC/11.3.0 OpenMPI/4.1.4 PyTorch-Lightning/1.8.4-CUDA-11.7.0\n"
-    "module load PyTorch-Geometric/2.1.0-PyTorch-1.12.0-CUDA-11.7.0"
-)
+
 
 
 def _get_torchvision_module(base_modules_str):
@@ -175,10 +173,7 @@ SEQ_DATASET_MODULES = {
     "AISHELL": "Datasets/AISHELL/2017",
 }
 
-GNN_DATASET_MODULES = {
-    "JODIE": "Datasets/JODIE/2012",
-    "QM9": "Datasets/QM9/2012",
-}
+
 
 GEN_DATASET_MODULES = {
     "llava-onevision": "Datasets/llava-onevision/2024",
@@ -190,8 +185,14 @@ def setup_pytorch_modules(
     dataset_type="builtin",
     builtin_dataset="ImageNet",
     seq_dataset="mackey_glass",
-    graph_dataset="JODIE",
+    graph_dataset="cora",
     gen_dataset="llava-onevision",
+    nlp_dataset_type="builtin",
+    nlp_builtin_dataset="fastText",
+    tab_dataset_type="builtin",
+    tab_builtin_dataset="Synthetic Tabular",
+    audio_dataset_type="builtin",
+    audio_builtin_dataset="AISHELL",
     gpu="",
 ):
     """Return module load commands for the given model category and dataset."""
@@ -201,6 +202,13 @@ def setup_pytorch_modules(
     ds_t = (dataset_type or "builtin").strip()
     dataset_cmd = ""
     
+    if model_category == "nlp":
+        ds_t = (nlp_dataset_type or "builtin").strip()
+    elif model_category == "tabular":
+        ds_t = (tab_dataset_type or "builtin").strip()
+    elif model_category == "audio":
+        ds_t = (audio_dataset_type or "builtin").strip()
+
     if ds_t == "builtin":
         if model_category == "computer_vision":
             if builtin_dataset in CV_DATASET_MODULES:
@@ -208,21 +216,17 @@ def setup_pytorch_modules(
         elif model_category == "sequential":
             if seq_dataset in SEQ_DATASET_MODULES:
                 dataset_cmd = f"\nmodule load {SEQ_DATASET_MODULES[seq_dataset]} 2>/dev/null || true"
-        elif model_category == "gnn":
-            if graph_dataset in GNN_DATASET_MODULES:
-                dataset_cmd = f"\nmodule load {GNN_DATASET_MODULES[graph_dataset]} 2>/dev/null || true"
         elif model_category == "generative":
             if gen_dataset in GEN_DATASET_MODULES:
                 dataset_cmd = f"\nmodule load {GEN_DATASET_MODULES[gen_dataset]} 2>/dev/null || true"
+        elif model_category == "nlp":
+            if nlp_builtin_dataset in SEQ_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {SEQ_DATASET_MODULES[nlp_builtin_dataset]} 2>/dev/null || true"
+        elif model_category == "audio":
+            if audio_builtin_dataset in SEQ_DATASET_MODULES:
+                dataset_cmd = f"\nmodule load {SEQ_DATASET_MODULES[audio_builtin_dataset]} 2>/dev/null || true"
 
     gpu_val = (gpu or "").strip().lower()
-
-    if model_category == "gnn":
-        gnn_mods = getattr(cluster_module, "gnn_modules", DEFAULT_GNN_MODULES)
-        return (
-            "# Load cluster modules for Graph Neural Network training\n"
-            f"{module_use_cmd}{gnn_mods}{dataset_cmd}"
-        )
 
     base = getattr(cluster_module, "pytorch_lightning_modules", DEFAULT_PT_MODULES)
 
@@ -253,14 +257,22 @@ def setup_pytorch_modules_if_run(
     dataset_type="builtin",
     builtin_dataset="ImageNet",
     seq_dataset="mackey_glass",
-    graph_dataset="JODIE",
+    graph_dataset="cora",
     gen_dataset="llava-onevision",
+    nlp_dataset_type="builtin",
+    nlp_builtin_dataset="fastText",
+    tab_dataset_type="builtin",
+    tab_builtin_dataset="Synthetic Tabular",
+    audio_dataset_type="builtin",
+    audio_builtin_dataset="AISHELL",
     gpu="",
 ):
     if mode == "monitor":
         return "# monitor mode — no training job"
     return setup_pytorch_modules(
-        model_category, dataset_type, builtin_dataset, seq_dataset, graph_dataset, gen_dataset, gpu
+        model_category, dataset_type, builtin_dataset, seq_dataset, graph_dataset, gen_dataset,
+        nlp_dataset_type, nlp_builtin_dataset, tab_dataset_type, tab_builtin_dataset, audio_dataset_type, audio_builtin_dataset,
+        gpu
     )
 
 
@@ -765,6 +777,23 @@ def generate_lightning_script_if_run(
     genModelType="vae",
     cvDatasetFormat="tensors",
     genDatasetFormat="tensors",
+    exportOnnx="No",
+    nlpDatasetType="custom",
+    nlpBuiltinDataset="fastText",
+    nlpCustomPath="",
+    nlpModelType="attention",
+    nlpMaxSeqLen="128",
+    tabDatasetType="custom",
+    tabBuiltinDataset="synthetic_tabular",
+    tabCustomPath="",
+    tabTargetColumn="target",
+    tabModelType="mlp",
+    tabTaskType="regression",
+    audioDatasetType="custom",
+    audioBuiltinDataset="AISHELL",
+    audioCustomPath="",
+    audioModelType="classification",
+    audioTransformType="mel_spectrogram",
 ):
     if mode == "monitor":
         return ""
@@ -788,6 +817,23 @@ def generate_lightning_script_if_run(
         genModelType,
         cvDatasetFormat,
         genDatasetFormat,
+        exportOnnx,
+        nlpDatasetType,
+        nlpBuiltinDataset,
+        nlpCustomPath,
+        nlpModelType,
+        nlpMaxSeqLen,
+        tabDatasetType,
+        tabBuiltinDataset,
+        tabCustomPath,
+        tabTargetColumn,
+        tabModelType,
+        tabTaskType,
+        audioDatasetType,
+        audioBuiltinDataset,
+        audioCustomPath,
+        audioModelType,
+        audioTransformType,
     )
 
 
@@ -843,6 +889,23 @@ def generate_lightning_script(
     genModelType="vae",
     cvDatasetFormat="tensors",
     genDatasetFormat="tensors",
+    exportOnnx="No",
+    nlpDatasetType="custom",
+    nlpBuiltinDataset="fastText",
+    nlpCustomPath="",
+    nlpModelType="attention",
+    nlpMaxSeqLen="128",
+    tabDatasetType="custom",
+    tabBuiltinDataset="synthetic_tabular",
+    tabCustomPath="",
+    tabTargetColumn="target",
+    tabModelType="mlp",
+    tabTaskType="regression",
+    audioDatasetType="custom",
+    audioBuiltinDataset="AISHELL",
+    audioCustomPath="",
+    audioModelType="classification",
+    audioTransformType="mel_spectrogram",
 ):
     # ── Parse & validate shared params ────────────────────────────────────────
     category = (modelCategory or "computer_vision").strip()
@@ -932,19 +995,13 @@ def generate_lightning_script(
         )
 
     elif category == "gnn":
-        gnn_ds_type = (graphDatasetType or "builtin").strip()
-        gnn_blt     = (graphBuiltinDataset or "cora").strip()
-        g_type      = gnn_blt if gnn_ds_type == "builtin" else "custom_graph"
-        g_path      = (graphDataPath or "").strip()
-        g_hdim      = int(gnnHiddenDim)  if gnnHiddenDim  else 64
-        g_nlay      = int(gnnNumLayers)  if gnnNumLayers  else 2
-        
-        train_script, prefetch_script = _gen_gnn_script(
-            exp_name, g_type, g_path, g_hdim, g_nlay,
-            ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
-            logger_lines, callback_block,
-            gnn_layer_type=gnnLayerType,
-        )
+        import builtins
+        msg = "Graph Neural Networks (GNN) model category is no longer supported."
+        if hasattr(builtins, "drona_add_message"):
+            builtins.drona_add_message(msg, "error")
+        else:
+            print(f"[ERROR] {msg}")
+        return
 
     elif category == "generative":
         gen_ds_type = (genDatasetType or "builtin").strip()
@@ -961,6 +1018,46 @@ def generate_lightning_script(
             gen_dataset_format=genDatasetFormat,
         )
 
+    elif category == "nlp":
+        nlp_ds_type = (nlpDatasetType or "custom").strip()
+        nlp_blt     = (nlpBuiltinDataset or "fastText").strip()
+        nlp_path    = (nlpCustomPath or "").strip()
+        nlp_max_len = int(nlpMaxSeqLen) if nlpMaxSeqLen else 128
+        
+        train_script, prefetch_script = _gen_nlp_script(
+            exp_name, nlp_ds_type, nlp_blt, nlp_path, nlp_max_len,
+            ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
+            logger_lines, callback_block,
+            nlp_model_type=nlpModelType,
+        )
+
+    elif category == "tabular":
+        tab_ds_type = (tabDatasetType or "custom").strip()
+        tab_blt     = (tabBuiltinDataset or "synthetic_tabular").strip()
+        tab_path    = (tabCustomPath or "").strip()
+        tab_tgt     = (tabTargetColumn or "target").strip()
+        tab_task    = (tabTaskType or "regression").strip()
+        
+        train_script, prefetch_script = _gen_tabular_script(
+            exp_name, tab_ds_type, tab_blt, tab_path, tab_tgt, tab_task,
+            ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
+            logger_lines, callback_block,
+            tab_model_type=tabModelType,
+        )
+
+    elif category == "audio":
+        audio_ds_type = (audioDatasetType or "custom").strip()
+        audio_blt     = (audioBuiltinDataset or "AISHELL").strip()
+        audio_path    = (audioCustomPath or "").strip()
+        
+        train_script, prefetch_script = _gen_audio_script(
+            exp_name, audio_ds_type, audio_blt, audio_path,
+            ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
+            logger_lines, callback_block,
+            audio_model_type=audioModelType,
+            audio_transform_type=audioTransformType,
+        )
+
     elif category == "custom":
         train_script, prefetch_script = _gen_custom_script(
             exp_name, ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
@@ -974,6 +1071,62 @@ def generate_lightning_script(
 
     if train_script is None:
         return ""  # error already added by sub-generator
+
+    if _checkbox_on(exportOnnx):
+        onnx_export_code = '''    trainer.fit(model, datamodule=datamodule)
+
+    # Export final model to ONNX
+    try:
+        import inspect
+        model.eval()
+        
+        # Setup datamodule and get a sample batch
+        datamodule.setup("fit")
+        dl = datamodule.train_dataloader()
+        batch = next(iter(dl))
+        
+        sig = inspect.signature(model.forward)
+        
+        if "edge_index" in sig.parameters:
+            x = getattr(batch, 'x', None)
+            edge_index = getattr(batch, 'edge_index', None)
+            if x is not None and edge_index is not None:
+                input_sample = (x, edge_index)
+            else:
+                in_channels = getattr(model.hparams, 'in_channels', 64)
+                input_sample = (torch.randn(10, in_channels), torch.zeros((2, 20), dtype=torch.long))
+        else:
+            if isinstance(batch, (tuple, list)):
+                x = batch[0]
+            else:
+                x = batch
+                
+            if isinstance(x, torch.Tensor):
+                input_sample = x[:1]
+            else:
+                input_sample = x
+        
+        device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+        
+        if isinstance(input_sample, tuple):
+            input_sample = tuple(
+                t.to(device=device, dtype=dtype) if isinstance(t, torch.Tensor) and t.dtype.is_floating_point else t.to(device=device)
+                for t in input_sample
+            )
+        elif isinstance(input_sample, torch.Tensor):
+            if input_sample.dtype.is_floating_point:
+                input_sample = input_sample.to(device=device, dtype=dtype)
+            else:
+                input_sample = input_sample.to(device=device)
+                
+        onnx_path = os.path.join(LOG_DIR, "final_model.onnx")
+        os.makedirs(os.path.dirname(onnx_path), exist_ok=True)
+        model.to_onnx(onnx_path, input_sample, export_params=True)
+        print(f"Successfully exported ONNX model at: {onnx_path}")
+    except Exception as e:
+        print(f"Could not export model to ONNX: {e}")'''
+        train_script = train_script.replace("    trainer.fit(model, datamodule=datamodule)", onnx_export_code)
 
     # ── Write generated files ─────────────────────────────────────────────────
     _write_staged_file(env_dir, job_location, "train.py", train_script)

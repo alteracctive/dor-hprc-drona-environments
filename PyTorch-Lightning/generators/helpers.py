@@ -667,7 +667,7 @@ def load_builtin_dataset(name, data_dir, train):
         class DummyDataset(Dataset):
             def __len__(self): return 1000
             def __getitem__(self, idx):
-                return torch.randn(3, 224, 224), 0
+                return torch.rand(3, 224, 224), 0
         return DummyDataset()
 '''
 
@@ -687,7 +687,7 @@ def load_builtin_dataset(name, data_dir, train):
             class DummyDataset(Dataset):
                 def __len__(self): return 1000
                 def __getitem__(self, idx):
-                    return torch.randn(3, 224, 224), 0
+                    return torch.rand(3, 224, 224), 0
             return DummyDataset()
 '''
     return ""

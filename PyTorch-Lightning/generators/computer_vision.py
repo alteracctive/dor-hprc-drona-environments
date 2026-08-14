@@ -17,6 +17,9 @@ def _gen_computer_vision_script(
     cv_dataset_format="tensors",
 ):
     """Returns (train_script, prefetch_script_or_None)."""
+    if cv_model_arch not in ("cnn", "mlp", "vit", "unet"):
+        cv_model_arch = "cnn"
+
     cache_dir = "./data"
 
     if ds_type == "builtin":
