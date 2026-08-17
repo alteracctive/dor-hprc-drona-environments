@@ -1,21 +1,14 @@
 #!/usr/bin/env python3
 """
-Generated PyTorch Lightning training script — Variational Autoencoder (VAE).
-
-This script implements a fully-connected Variational Autoencoder to generate 
-and reconstruct images. It showcases:
-  1. DataModule pipeline for generative task images.
-  2. Encoder network mapping images to latent distribution parameters (mu, log_var).
-  3. Reparameterization trick (sampling z = mu + std * epsilon).
-  4. Decoder network mapping latent space samples back to image space.
-  5. Optimization of the Evidence Lower Bound (ELBO) loss.
+Generated PyTorch Lightning training script — Graph Neural Network (GNN).
+Supports GCN, GAT, and GraphSAGE message-passing models.
 """
 
 import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+
 # Configure PyTorch Lightning / Lightning package imports (compatibility wrapper)
 try:
     import pytorch_lightning as L
@@ -25,137 +18,116 @@ except ImportError:
     import lightning as L
     from lightning.pytorch.loggers import TensorBoardLogger
     from lightning.pytorch.callbacks import ModelCheckpoint
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
-from torch.utils.data import Dataset
+
+# Temporary mock of torch.cuda.is_available to allow PyTorch Geometric imports on CPU/login nodes
+_orig_cuda_available = torch.cuda.is_available
+torch.cuda.is_available = lambda: True
+try:
+    from torch_geometric.nn import GCNConv, GATConv, SAGEConv
+finally:
+    torch.cuda.is_available = _orig_cuda_available
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. Hyperparameters & Configurations
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR = "./data"              # Directory where datasets are downloaded or stored
-LOG_DIR = "./lightning_logs"                # Parent directory for logger output files
-EXPERIMENT_NAME = "gen_vae_test" # Subdirectory/name for this training run
-LR = 1e-3                            # Learning rate for the optimizer
-BATCH_SIZE = 32            # Input batch size for training and validation
-NUM_WORKERS = 0          # Number of CPU subprocesses for data loading
-MAX_EPOCHS = 10            # Maximum number of training epochs
-ACCELERATOR = "cpu"        # Accelerator hardware ("cpu", "gpu", "xpu", etc.)
-DEVICES = 1                  # Number of device instances to use (e.g. 1, "auto")
-PRECISION = 32              # Training precision (e.g. 32, "16-mixed", "bf16-mixed")
-LOG_EVERY_N_STEPS = 50 # How often to log training metrics
-SEED = 42                        # Random seed for reproducibility
+DATA_DIR = "./data"
+LOG_DIR = "./lightning_logs"
+EXPERIMENT_NAME = "lightning_run"
+LR = 2e-3
+BATCH_SIZE = 32
+NUM_WORKERS = 0
+MAX_EPOCHS = 15
+ACCELERATOR = "cpu"
+DEVICES = 1
+PRECISION = 32
+LOG_EVERY_N_STEPS = 50
+SEED = 100
 
-# VAE Specific Architecture Parameters
-IN_CHANNELS = 3          # Number of image channels (e.g., 1 for MNIST, 3 for RGB)
-IMAGE_SIZE = 224            # Width and height of input images
-LATENT_DIM = 128            # Dimensionality of the bottleneck latent space (z)
-FLAT_SIZE = 150528              # Flattened image size (IN_CHANNELS * IMAGE_SIZE * IMAGE_SIZE)
+GNN_HIDDEN_DIM = 64
+GNN_NUM_LAYERS = 2
 
-# ── Data Helpers & Custom Datasets ────────────────────────────────────────────
-# Injected dynamically based on your dataset choice.
-def load_builtin_dataset(name, data_dir, train):
-    """Loads custom folder datasets utilizing standard torchvision ImageFolder."""
-    env_var = "CC3M_PATH" if name == "CC3M" else ("CAMUS_PATH" if name == "CAMUS" else "LLaVA_OneVision_PATH")
-    path = os.environ.get(env_var, "")
-    split = "train" if train else "val"
-    transform = transforms.Compose([transforms.Resize(224), transforms.CenterCrop(224), transforms.ToTensor()])
-    try:
-        return datasets.ImageFolder(os.path.join(path, split), transform=transform)
-    except Exception:
-        try:
-            return datasets.ImageFolder(path, transform=transform)
-        except Exception:
-            class DummyDataset(Dataset):
-                def __len__(self): return 1000
-                def __getitem__(self, idx):
-                    return torch.rand(3, 224, 224), 0
-            return DummyDataset()
-
-# ── DataModule ────────────────────────────────────────────────────────────────
-# Controls dataset setup, downloads, splits, and DataLoader instantiation.
+# ── DataModule ──
 class LitDataModule(L.LightningDataModule):
-    """DataModule managing downloads, setup, and data loading for VAE builtin datasets."""
-    def __init__(self, data_dir=DATA_DIR, batch_size=32, num_workers=0):
-        super().__init__()
-        self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.dataset_name = "llava-onevision"
-
     def setup(self, stage=None):
-        # Load train and validation dataset splits
-        self.train_ds = load_builtin_dataset(self.dataset_name, self.data_dir, train=True)
-        self.val_ds = load_builtin_dataset(self.dataset_name, self.data_dir, train=False)
+        # Load prepared QM9 dataset from cluster module environment path
+        from torch_geometric.datasets import QM9
+        path = os.environ.get("QM9_PATH", "./data/QM9")
+        dataset = QM9(root=path)
+        
+        # Split into training and validation sets
+        split_idx = int(len(dataset) * 0.8)
+        self.train_ds = dataset[:split_idx]
+        self.val_ds = dataset[split_idx:]
+        
+        self.num_features = dataset.num_features
+        self.num_classes = 19  # QM9 has 19 regression targets
+        self.is_gnn_benchmark = True
+        self.is_qm9 = True
 
     def train_dataloader(self):
-        return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        from torch_geometric.loader import DataLoader as PyGDataLoader
+        if getattr(self, "is_gnn_benchmark", False):
+            return PyGDataLoader(self.train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+        else:
+            return PyGDataLoader([self.data], batch_size=1)
 
     def val_dataloader(self):
-        return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        from torch_geometric.loader import DataLoader as PyGDataLoader
+        if getattr(self, "is_gnn_benchmark", False):
+            return PyGDataLoader(self.val_ds, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
+        else:
+            return PyGDataLoader([self.data], batch_size=1)
 
-# ── Generative Model ──
+# ── Graph Neural Network Model ──
 class LitModel(L.LightningModule):
-    """
-    Variational Autoencoder with fully-connected encoder/decoder.
-    Optimizes the Evidence Lower Bound (ELBO): reconstruction loss + KL divergence.
-    """
+    """Multi-layer Graph Neural Network using GCNConv layers."""
 
-    def __init__(self, flat_size=150528, latent_dim=128, lr=1e-3):
+    def __init__(self, in_channels, hidden_channels=64,
+                 out_channels=1, num_layers=2, lr=2e-3, is_qm9=False):
         super().__init__()
         self.save_hyperparameters()
+        
+        conv_cls = {
+            "gcn": GCNConv,
+            "gat": lambda in_c, out_c: GATConv(in_c, out_c, heads=1),
+            "sage": SAGEConv
+        }["gcn"]
+        
+        self.convs = nn.ModuleList()
+        self.convs.append(conv_cls(in_channels, hidden_channels))
+        for _ in range(max(0, num_layers - 2)):
+            self.convs.append(conv_cls(hidden_channels, hidden_channels))
+        self.convs.append(conv_cls(hidden_channels, out_channels))
 
-        # Encoder: Projects input image to the latent distribution parameters (mu and log_var)
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(flat_size, 512), 
-            nn.ReLU(),
-            nn.Linear(512, 256), 
-            nn.ReLU(),
-        )
-        self.fc_mu = nn.Linear(256, latent_dim)
-        self.fc_log_var = nn.Linear(256, latent_dim)
-
-        # Decoder: Maps latent sample z back into reconstruction space
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 256), 
-            nn.ReLU(),
-            nn.Linear(256, 512), 
-            nn.ReLU(),
-            nn.Linear(512, flat_size),
-            nn.Sigmoid(),   # Constrain output pixels to [0, 1] range
-        )
-
-    def encode(self, x):
-        h = self.encoder(x)
-        return self.fc_mu(h), self.fc_log_var(h)
-
-    def reparameterize(self, mu, log_var):
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-
-    def decode(self, z):
-        return self.decoder(z)
-
-    def forward(self, x):
-        mu, log_var = self.encode(x)
-        z = self.reparameterize(mu, log_var)
-        return self.decode(z), mu, log_var
-
-    def _elbo_loss(self, x, x_hat, mu, log_var):
-        x_flat = x.view(x.size(0), -1)
-        recon = F.binary_cross_entropy(x_hat, x_flat, reduction="sum") / x.size(0)
-        kl = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp()) / x.size(0)
-        return recon + kl, recon, kl
+    def forward(self, x, edge_index):
+        for conv in self.convs[:-1]:
+            out = conv(x, edge_index)
+            if isinstance(out, tuple): out = out[0]
+            x = F.relu(out)
+            x = F.dropout(x, p=0.5, training=self.training)
+            
+        out = self.convs[-1](x, edge_index)
+        if isinstance(out, tuple): out = out[0]
+        return out
 
     def _shared_step(self, batch, stage):
-        x, _ = batch
-        x_hat, mu, log_var = self(x)
-        loss, recon, kl = self._elbo_loss(x, x_hat, mu, log_var)
-        
-        self.log(f"{stage}_loss", loss, prog_bar=True)
-        self.log(f"{stage}_recon", recon)
-        self.log(f"{stage}_kl", kl)
+        out = self(batch.x, batch.edge_index)
+        if self.hparams.is_qm9:
+            from torch_geometric.nn import global_mean_pool
+            out = global_mean_pool(out, batch.batch)
+            loss = F.l1_loss(out, batch.y)
+            self.log(f"{stage}_loss", loss, prog_bar=True, batch_size=batch.num_graphs)
+            self.log(f"{stage}_mae", loss, prog_bar=True, batch_size=batch.num_graphs)
+        else:
+            mask = getattr(batch, f"{stage}_mask", None)
+            if mask is not None:
+                loss = F.cross_entropy(out[mask], batch.y[mask])
+                acc = (out[mask].argmax(dim=-1) == batch.y[mask]).float().mean()
+            else:
+                loss = F.cross_entropy(out, batch.y)
+                acc = (out.argmax(dim=-1) == batch.y).float().mean()
+            self.log(f"{stage}_loss", loss, prog_bar=True, batch_size=batch.num_graphs if hasattr(batch, 'num_graphs') else 1)
+            self.log(f"{stage}_acc", acc, prog_bar=True, batch_size=batch.num_graphs if hasattr(batch, 'num_graphs') else 1)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -165,43 +137,81 @@ class LitModel(L.LightningModule):
         self._shared_step(batch, "val")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr, weight_decay=5e-4)
 
 
-# ── Logger Setup ─────────────────────────────────────────────────────────────
 def build_loggers():
+    """Build list of active loggers configured in the generator UI."""
     loggers = [
-    TensorBoardLogger(save_dir=LOG_DIR, name="gen_vae_test"),
+    TensorBoardLogger(save_dir=LOG_DIR, name="lightning_run"),
     ]
     return [lg for lg in loggers if lg is not False]
 
-
-# ── Main Entrypoint & Training Loop ────────────────────────────────────────────
 def main():
+    """Main training orchestration function."""
     L.seed_everything(SEED, workers=True)
     
-    # Initialize data pipeline and run download/setup steps
+    accelerator = ACCELERATOR
+    devices = DEVICES
+    
+
+
+    # Initialize data pipeline
     datamodule = LitDataModule()
     datamodule.setup()
     
-    # Initialize the model using configured dimension properties
-    model = LitModel(flat_size=FLAT_SIZE, latent_dim=LATENT_DIM, lr=LR)
+    # Initialize the model using configuration settings
+    model = LitModel(
+        in_channels=datamodule.num_features,
+        hidden_channels=GNN_HIDDEN_DIM,
+        out_channels=datamodule.num_classes,
+        num_layers=GNN_NUM_LAYERS,
+        lr=LR,
+        is_qm9=getattr(datamodule, "is_qm9", False),
+    )
+    
+    # Configure logging and callback checkpoints
     loggers = build_loggers()
-    
     callbacks = [
-            ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, save_last=True),
-        ]
+        ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, save_last=True),
+    ]
     
+    # Set up PyTorch Lightning Trainer with all hyperparameters
     trainer = L.Trainer(
         max_epochs=MAX_EPOCHS,
-        accelerator=ACCELERATOR,
-        devices=DEVICES,
+        accelerator=accelerator,
+        devices=devices,
         precision=PRECISION,
         log_every_n_steps=LOG_EVERY_N_STEPS,
         logger=loggers if loggers else None,
         callbacks=callbacks,
+        enable_checkpointing=True,
     )
+    
+    # Run the model fitting phase
     trainer.fit(model, datamodule=datamodule)
+
+    # Save checkpoint weights side-by-side as a clean PyTorch state-dict (.pt file)
+    checkpoint_callback = trainer.checkpoint_callback
+    if checkpoint_callback and getattr(checkpoint_callback, "best_model_path", None):
+        ckpt_paths = set()
+        if getattr(checkpoint_callback, "best_model_path", None):
+            ckpt_paths.add(checkpoint_callback.best_model_path)
+        if getattr(checkpoint_callback, "last_model_path", None):
+            ckpt_paths.add(checkpoint_callback.last_model_path)
+            
+        for ckpt_path in filter(None, ckpt_paths):
+            if os.path.exists(ckpt_path):
+                pt_path = os.path.splitext(ckpt_path)[0] + ".pt"
+                try:
+                    ckpt = torch.load(ckpt_path, map_location="cpu")
+                    # Save just the weights dictionary (state_dict) if present, else save the whole object
+                    weights = ckpt.get("state_dict", ckpt)
+                    torch.save(weights, pt_path)
+                    print(f"Saved PyTorch weights side-by-side at: {pt_path}")
+                except Exception as e:
+                    print(f"Could not save side-by-side .pt weights from {ckpt_path}: {e}")
 
 if __name__ == "__main__":
     main()
+

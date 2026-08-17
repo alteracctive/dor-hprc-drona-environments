@@ -19,7 +19,7 @@
         "type": "select",
         "name": "modelCategory",
         "label": "Model category",
-        "help": "Select the model category:\\n- Custom: A bare-bones, highly commented blueprint for any user model.\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Natural Language Processing (Native Torchtext/PyTorch): Sequence-to-sequence, text classification, and custom lightweight Attention/Transformer blocks without overhead.\\n- Tabular & Structured Data Deep Learning: DeepMLPs, ResNets for Tabular, or TabNet primitives.\\n- Audio & Signal Processing: Speech processing, acoustic classification, and waveform synthesis using native torchaudio transforms.\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.",
+        "help": "Select the model category:\\n- Custom: A bare-bones, highly commented blueprint for any user model.\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Natural Language Processing (Native Torchtext/PyTorch): Sequence-to-sequence, text classification, and custom lightweight Attention/Transformer blocks without overhead.\\n- Tabular & Structured Data Deep Learning: DeepMLPs, ResNets for Tabular, or TabNet primitives.\\n- Audio & Signal Processing: Speech processing, acoustic classification, and waveform synthesis using native torchaudio transforms.\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.\\n- Graph Neural Networks (GNN): Node classification and molecular property regression (QM9) using GCN, GAT, or GraphSAGE message passing.",
         "options": [
           { "label": "Custom (Bare-bones blueprint)", "value": "custom" },
           { "label": "Computer Vision (Classification, segmentation, ViT)", "value": "computer_vision" },
@@ -27,7 +27,8 @@
           { "label": "Natural Language Processing (Native Torchtext/PyTorch)", "value": "nlp" },
           { "label": "Tabular & Structured Data Deep Learning", "value": "tabular" },
           { "label": "Audio & Signal Processing", "value": "audio" },
-          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" }
+          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" },
+          { "label": "Graph Neural Networks (GNN)", "value": "gnn" }
         ],
         "value": "custom"
       }
@@ -561,6 +562,84 @@
           { "value": "mfcc", "label": "MFCC" }
         ],
         "help": "Feature extraction transform to use from torchaudio.transforms."
+      }
+    }
+  },
+
+  "ContainerGNNDataset": {
+    "type": "rowContainer",
+    "label": "GNN Dataset",
+    "condition": "modelCategory.gnn",
+    "elements": {
+      "graphDatasetType": {
+        "type": "radioGroup",
+        "name": "graphDatasetType",
+        "label": "Dataset source",
+        "options": [
+          { "label": "Import", "value": "custom" },
+          { "label": "Prepared", "value": "builtin" }
+        ],
+        "value": "custom"
+      },
+      "builtinGraphDatasetRow": {
+        "type": "rowContainer",
+        "label": "",
+        "condition": "graphDatasetType.builtin",
+        "elements": {
+          "graphBuiltinDataset": {
+            "type": "select",
+            "label": "Prepared dataset",
+            "name": "graphBuiltinDataset",
+            "value": "QM9",
+            "options": [
+              { "value": "QM9", "label": "QM9 (Datasets/QM9)" }
+            ],
+            "help": "Graph dataset loaded from cluster module."
+          }
+        }
+      },
+      "graphDataPath": {
+        "type": "picker",
+        "label": "Custom graph file/dir",
+        "name": "graphDataPath",
+        "remoteLabel": "local",
+        "localLabel": "cluster",
+        "showFiles": "True",
+        "files": "True",
+        "help": "Path to a custom graph data file (.pt) or dataset directory.",
+        "condition": "graphDatasetType.custom"
+      }
+    }
+  },
+
+  "ContainerGNNSettings": {
+    "type": "rowContainer",
+    "label": "GNN Settings",
+    "condition": "modelCategory.gnn",
+    "elements": {
+      "gnnLayerType": {
+        "type": "select",
+        "label": "Model architecture",
+        "name": "gnnLayerType",
+        "value": "gcn",
+        "options": [
+          { "value": "gcn", "label": "GCN (Graph Convolutional Network)" },
+          { "value": "gat", "label": "GAT (Graph Attention Network)" },
+          { "value": "sage", "label": "GraphSAGE" }
+        ],
+        "help": "Select the GNN layer message-passing architecture."
+      },
+      "gnnHiddenDim": {
+        "type": "number",
+        "label": "Hidden dimension",
+        "name": "gnnHiddenDim",
+        "value": "64"
+      },
+      "gnnNumLayers": {
+        "type": "number",
+        "label": "Number of layers",
+        "name": "gnnNumLayers",
+        "value": "2"
       }
     }
   },

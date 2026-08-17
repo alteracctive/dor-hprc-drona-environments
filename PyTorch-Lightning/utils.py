@@ -15,6 +15,7 @@ from generators import (
     _gen_nlp_script,
     _gen_tabular_script,
     _gen_audio_script,
+    _gen_gnn_script,
 )
 
 
@@ -194,6 +195,7 @@ def setup_pytorch_modules(
     audio_dataset_type="builtin",
     audio_builtin_dataset="AISHELL",
     gpu="",
+    graph_dataset_type="builtin",
 ):
     """Return module load commands for the given model category and dataset."""
     cluster, cluster_module = retrieve_cluster_info()
@@ -208,6 +210,8 @@ def setup_pytorch_modules(
         ds_t = (tab_dataset_type or "builtin").strip()
     elif model_category == "audio":
         ds_t = (audio_dataset_type or "builtin").strip()
+    elif model_category == "gnn":
+        ds_t = (graph_dataset_type or "builtin").strip()
 
     if ds_t == "builtin":
         if model_category == "computer_vision":
@@ -225,10 +229,15 @@ def setup_pytorch_modules(
         elif model_category == "audio":
             if audio_builtin_dataset in SEQ_DATASET_MODULES:
                 dataset_cmd = f"\nmodule load {SEQ_DATASET_MODULES[audio_builtin_dataset]} 2>/dev/null || true"
+        elif model_category == "gnn":
+            if graph_dataset == "QM9":
+                dataset_cmd = "\nmodule load Datasets/QM9/2012 2>/dev/null || true"
 
     gpu_val = (gpu or "").strip().lower()
 
     base = getattr(cluster_module, "pytorch_lightning_modules", DEFAULT_PT_MODULES)
+    if model_category == "gnn":
+        base = "module load GCC/11.3.0 OpenMPI/4.1.4 PyTorch-Geometric/2.1.0-PyTorch-1.12.0-CUDA-11.7.0\nmodule load PyTorch-Lightning/1.7.7-CUDA-11.7.0 2>/dev/null || true\nmodule load CUDA/11.7.0 2>/dev/null || true"
 
     torchvision_cmd = ""
     if model_category == "computer_vision" or (
@@ -266,13 +275,14 @@ def setup_pytorch_modules_if_run(
     audio_dataset_type="builtin",
     audio_builtin_dataset="AISHELL",
     gpu="",
+    graph_dataset_type="builtin",
 ):
     if mode == "monitor":
         return "# monitor mode — no training job"
     return setup_pytorch_modules(
         model_category, dataset_type, builtin_dataset, seq_dataset, graph_dataset, gen_dataset,
         nlp_dataset_type, nlp_builtin_dataset, tab_dataset_type, tab_builtin_dataset, audio_dataset_type, audio_builtin_dataset,
-        gpu
+        gpu, graph_dataset_type
     )
 
 
@@ -795,6 +805,23 @@ def generate_lightning_script_if_run(
     audioModelType="classification",
     audioTransformType="mel_spectrogram",
 ):
+    try:
+        with open("debug_args.txt", "w", encoding="utf-8") as debug_f:
+            debug_f.write(f"mode: {mode}\n")
+            debug_f.write(f"modelCategory: {modelCategory}\n")
+            debug_f.write(f"name: {name}\n")
+            debug_f.write(f"datasetType: {datasetType}\n")
+            debug_f.write(f"builtinDataset: {builtinDataset}\n")
+            debug_f.write(f"customDataPath: {customDataPath}\n")
+            debug_f.write(f"graphDatasetType: {graphDatasetType}\n")
+            debug_f.write(f"graphBuiltinDataset: {graphBuiltinDataset}\n")
+            debug_f.write(f"graphDataPath: {graphDataPath}\n")
+            debug_f.write(f"gnnHiddenDim: {gnnHiddenDim}\n")
+            debug_f.write(f"gnnNumLayers: {gnnNumLayers}\n")
+            debug_f.write(f"gnnLayerType: {gnnLayerType}\n")
+    except Exception:
+        pass
+
     if mode == "monitor":
         return ""
     return generate_lightning_script(
@@ -995,13 +1022,37 @@ def generate_lightning_script(
         )
 
     elif category == "gnn":
-        import builtins
-        msg = "Graph Neural Networks (GNN) model category is no longer supported."
-        if hasattr(builtins, "drona_add_message"):
-            builtins.drona_add_message(msg, "error")
-        else:
-            print(f"[ERROR] {msg}")
-        return
+        graph_ds_type = (graphDatasetType or "builtin").strip()
+        if _is_drona_var(graph_ds_type) or not graph_ds_type:
+            graph_ds_type = "builtin"
+        
+        graph_blt = (graphBuiltinDataset or "QM9").strip()
+        if _is_drona_var(graph_blt) or not graph_blt:
+            graph_blt = "QM9"
+            
+        graph_path = (graphDataPath or "").strip()
+        if _is_drona_var(graph_path):
+            graph_path = ""
+            
+        gnn_hidden = _resolve_int(gnnHiddenDim, 64)
+        gnn_layers = _resolve_int(gnnNumLayers, 2)
+        
+        gnn_layer = (gnnLayerType or "gcn").strip().lower()
+        if _is_drona_var(gnn_layer) or not gnn_layer:
+            gnn_layer = "gcn"
+
+        if graph_ds_type == "custom" and not graph_path:
+            drona_add_message("Custom Graph dataset path is required.", "error")
+            return ""
+
+        train_script, prefetch_script = _gen_gnn_script(
+            exp_name, graph_ds_type, graph_blt, graph_path,
+            ep, bs, lr, nw, seed_val, acc, dev, prec, log_n, log_dir,
+            logger_lines, callback_block,
+            gnn_hidden=gnn_hidden,
+            gnn_layers=gnn_layers,
+            gnn_layer=gnn_layer,
+        )
 
     elif category == "generative":
         gen_ds_type = (genDatasetType or "builtin").strip()
