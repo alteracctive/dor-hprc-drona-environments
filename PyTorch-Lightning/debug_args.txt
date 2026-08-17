@@ -4,9 +4,9 @@ name: lightning_run
 datasetType: builtin
 builtinDataset: MNIST
 customDataPath: 
-graphDatasetType: $graphDatasetType
-graphBuiltinDataset: $graphBuiltinDataset
+graphDatasetType: builtin
+graphBuiltinDataset: QM9
 graphDataPath: 
-gnnHiddenDim: $gnnHiddenDim
-gnnNumLayers: $gnnNumLayers
-gnnLayerType: $gnnLayerType
+gnnHiddenDim: 128
+gnnNumLayers: 3
+gnnLayerType: gat

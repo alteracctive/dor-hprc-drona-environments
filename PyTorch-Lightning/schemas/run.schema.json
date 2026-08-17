@@ -744,6 +744,9 @@
         "name": "gpu",
         "value": "",
         "help": "Optional. Defaults to CPU (no accelerator). Select a GPU only if your training will use it.",
+        "retrieverParams": {
+          "MODEL_CATEGORY": "$modelCategory"
+        },
         "retriever": "retrieve_gpus"
       },
       "numgpus": {

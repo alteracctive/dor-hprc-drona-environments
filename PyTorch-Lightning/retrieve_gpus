@@ -3,7 +3,11 @@
 cluster=`/sw/local/bin/clustername`
 case $cluster in
     aces)
-	    echo "[ { \"value\": \"\", \"label\": \"NONE\" },  { \"value\": \"h100\", \"label\": \"H100\" }, { \"value\": \"a30\", \"label\": \"A30\" } ]"
+        if [ "$MODEL_CATEGORY" = "gnn" ]; then
+            echo "[ { \"value\": \"\", \"label\": \"NONE\" }, { \"value\": \"a30\", \"label\": \"A30\" } ]"
+        else
+            echo "[ { \"value\": \"\", \"label\": \"NONE\" },  { \"value\": \"h100\", \"label\": \"H100\" }, { \"value\": \"a30\", \"label\": \"A30\" } ]"
+        fi
 	;;
     grace)
         echo "[ { \"value\": \"\", \"label\": \"NONE\" }, { \"value\": \"t4\", \"label\": \"T4\" }, { \"value\": \"a40\", \"label\": \"A40\" } , { \"value\": \"rtx\", \"label\": \"RTX\" }  ]"

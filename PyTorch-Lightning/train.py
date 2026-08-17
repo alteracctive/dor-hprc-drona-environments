@@ -19,13 +19,7 @@ except ImportError:
     from lightning.pytorch.loggers import TensorBoardLogger
     from lightning.pytorch.callbacks import ModelCheckpoint
 
-# Temporary mock of torch.cuda.is_available to allow PyTorch Geometric imports on CPU/login nodes
-_orig_cuda_available = torch.cuda.is_available
-torch.cuda.is_available = lambda: True
-try:
-    from torch_geometric.nn import GCNConv, GATConv, SAGEConv
-finally:
-    torch.cuda.is_available = _orig_cuda_available
+from torch_geometric.nn import GCNConv, GATConv, SAGEConv
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. Hyperparameters & Configurations
@@ -43,8 +37,8 @@ PRECISION = 32
 LOG_EVERY_N_STEPS = 50
 SEED = 100
 
-GNN_HIDDEN_DIM = 64
-GNN_NUM_LAYERS = 2
+GNN_HIDDEN_DIM = 128
+GNN_NUM_LAYERS = 3
 
 # ── DataModule ──
 class LitDataModule(L.LightningDataModule):
@@ -80,10 +74,10 @@ class LitDataModule(L.LightningDataModule):
 
 # ── Graph Neural Network Model ──
 class LitModel(L.LightningModule):
-    """Multi-layer Graph Neural Network using GCNConv layers."""
+    """Multi-layer Graph Neural Network using GATConv layers."""
 
-    def __init__(self, in_channels, hidden_channels=64,
-                 out_channels=1, num_layers=2, lr=2e-3, is_qm9=False):
+    def __init__(self, in_channels, hidden_channels=128,
+                 out_channels=1, num_layers=3, lr=2e-3, is_qm9=False):
         super().__init__()
         self.save_hyperparameters()
         
@@ -91,7 +85,7 @@ class LitModel(L.LightningModule):
             "gcn": GCNConv,
             "gat": lambda in_c, out_c: GATConv(in_c, out_c, heads=1),
             "sage": SAGEConv
-        }["gcn"]
+        }["gat"]
         
         self.convs = nn.ModuleList()
         self.convs.append(conv_cls(in_channels, hidden_channels))

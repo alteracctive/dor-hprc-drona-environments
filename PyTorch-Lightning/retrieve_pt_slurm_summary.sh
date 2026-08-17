@@ -90,6 +90,7 @@ if best_row:
         STATUS=$(echo "$ROW" | cut -d'|' -f3 | xargs)
         case "$STATUS" in
             COMPLETED)   ROW_CLASS="table-success" ;;
+            PENDING)     ROW_CLASS="table-warning"; has_pending=true ;;
             FAILED|CANCELLED*|TIMEOUT|NODE_FAIL)
                          ROW_CLASS="table-danger"; has_failed=true ;;
             *)           ROW_CLASS=""; all_done=false ;;
@@ -111,7 +112,7 @@ if $has_failed; then
     status_label="Failed — check output/error logs below."
 elif $has_running; then
     dot_color="#0d6efd"
-    status_label="Running — dashboard auto-refreshes every 15 seconds."
+    status_label="Running — dashboard auto-refreshes every 10 seconds."
 elif $has_pending; then
     dot_color="#ffc107"
     status_label="Pending — queued, waiting to start."

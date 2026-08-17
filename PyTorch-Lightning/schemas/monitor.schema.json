@@ -9,7 +9,7 @@
         "name": "pt_monitor_html",
         "isDynamic": true,
         "allowHtml": true,
-        "refreshInterval": "15",
+        "refreshInterval": "10",
         "showRefreshButton": true,
         "retrieverParams": {
           "LOCATION": "$pt_location"
@@ -23,7 +23,7 @@
     "type": "hidden",
     "label": "JOB_IDS",
     "name": "jobs",
-    "refreshInterval": "15",
+    "refreshInterval": "10",
     "isDynamic": true,
     "condition": "mode.monitor && !pt_workflow.",
     "retrieverParams": {
@@ -38,7 +38,7 @@
     "label": "Status",
     "isDynamic": true,
     "condition": "mode.monitor && !jobs.",
-    "refreshInterval": "15",
+    "refreshInterval": "10",
     "retrieverParams": {
       "JOBID": "$jobs"
     },
@@ -113,7 +113,7 @@
         "label": "",
         "isDynamic": true,
         "allowHtml": true,
-        "refreshInterval": "15",
+        "refreshInterval": "10",
         "retrieverParams": {
           "RESOLVED_LOGDIR": "$resolved_logdir",
           "CUSTOM_LOGDIR": "$tbLogDir",

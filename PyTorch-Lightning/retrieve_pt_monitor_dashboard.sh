@@ -99,6 +99,7 @@ if best_row:
             STATUS=$(echo "$ROW" | cut -d'|' -f3 | xargs)
             case "$STATUS" in
                 COMPLETED)   ROW_CLASS="table-success" ;;
+                PENDING)     ROW_CLASS="table-warning"; has_pending=true ;;
                 FAILED|CANCELLED*|TIMEOUT|NODE_FAIL|OUT_OF_MEMORY)
                              ROW_CLASS="table-danger"; has_failed=true ;;
                 *)           ROW_CLASS="" ;;
@@ -121,7 +122,7 @@ if best_row:
         status_label="Failed — check output/error logs below."
     elif $has_running; then
         dot_color="#0d6efd"
-        status_label="Running — dashboard auto-refreshes every 15 seconds."
+        status_label="Running — dashboard auto-refreshes every 10 seconds."
     elif $has_pending; then
         dot_color="#ffc107"
         status_label="Pending — queued, waiting to start."
@@ -186,6 +187,20 @@ emit_epoch_progress() {
     fi
 
     if [ "$STATUS" = "PENDING" ]; then
+        echo "<div class='pt-epoch-section' style='margin-top:14px'>"
+        echo "  <div style='font-size:0.9em;font-weight:600;color:#495057;margin-bottom:8px'>Training Progress</div>"
+        echo "  <div class='card' style='border: 1px solid #dee2e6; border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden;'>"
+        echo "    <div class='card-body' style='padding: 15px; display: flex; flex-direction: column; gap: 8px;'>"
+        echo "      <div style='display:flex; justify-content:space-between; align-items:center; font-size:0.9em; font-weight:600;'>"
+        echo "        <span>Status: <span style='color:#ea580c;'>Pending for running</span></span>"
+        echo "        <span style='color:#868e96;'>0%</span>"
+        echo "      </div>"
+        echo "      <div style='background: #e9ecef; border-radius: 4px; height: 10px; overflow: hidden;'>"
+        echo "        <div style='background: #cbd5e1; width: 0%; height: 100%;'></div>"
+        echo "      </div>"
+        echo "    </div>"
+        echo "  </div>"
+        echo "</div>"
         return 0
     fi
 
@@ -221,7 +236,7 @@ max_epochs = int(sys.argv[2])
 status = sys.argv[3].upper()
 
 if status in ("COMPLETED", "COMPLETE"):
-    print(f"{max_epochs}|{max_epochs}|100|100")
+    print(f"{max_epochs}|{max_epochs}|100|100|—")
     sys.exit(0)
 
 try:
@@ -265,15 +280,19 @@ if status in ("COMPLETED", "COMPLETE") or display_epoch == max_epochs and ep_per
 else:
     overall_percent = int(((curr_ep + (ep_percent / 100.0)) / max_epochs) * 100)
 
-print(f"{display_epoch}|{max_epochs}|{ep_percent}|{overall_percent}")
+speed_matches = re.findall(r'(\d+(?:\.\d+)?\s*(?:it/s|s/it))', content)
+speed = speed_matches[-1] if speed_matches else "—"
+
+print(f"{display_epoch}|{max_epochs}|{ep_percent}|{overall_percent}|{speed}")
 EOF
 )
 
-    local display_epoch max_ep ep_percent overall_percent
+    local display_epoch max_ep ep_percent overall_percent speed
     display_epoch=$(echo "$PARSED" | cut -d'|' -f1)
     max_ep=$(echo "$PARSED" | cut -d'|' -f2)
     ep_percent=$(echo "$PARSED" | cut -d'|' -f3)
     overall_percent=$(echo "$PARSED" | cut -d'|' -f4)
+    speed=$(echo "$PARSED" | cut -d'|' -f5)
 
     if [ -z "$display_epoch" ] || [ -z "$max_ep" ]; then
         return 0
@@ -286,6 +305,9 @@ EOF
     
     echo "      <div style='display:flex; justify-content:space-between; align-items:center; font-size:0.9em; font-weight:600;'>"
     echo "        <span>Epoch: <span style='color:#0d6efd;'>${display_epoch}</span> / ${max_ep}</span>"
+    if [ -n "$speed" ] && [ "$speed" != "—" ]; then
+        echo "        <span style='font-size:0.85em; font-weight:normal; color:#6c757d;'>Speed: <span style='font-weight:600; color:#495057;'>${speed}</span></span>"
+    fi
     echo "        <span style='color:#198754;'>${ep_percent}%</span>"
     echo "      </div>"
 
@@ -626,7 +648,7 @@ LOCATION_ESC=$(echo "$LOCATION" | html_escape | sed 's/"/\&quot;/g')
 echo "<div id='pt-monitor-dashboard' data-pt-location=\"$LOCATION_ESC\">"
 
 echo "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap'>"
-echo "  <span style='font-size:0.82em;color:#868e96'>Auto-refreshes every 15 seconds.</span>"
+echo "  <span style='font-size:0.82em;color:#868e96'>Auto-refreshes every 10 seconds.</span>"
 echo "  <span id='pt-refresh-cooldown-hint' style='font-size:0.82em;color:#e67700'></span>"
 echo "</div>"
 
