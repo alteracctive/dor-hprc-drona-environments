@@ -352,10 +352,12 @@ def _write_staged_file(env_dir, job_location, filename, content, show_in_preview
             with open(env_dest, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
         except OSError as exc:
-            drona_add_message(
-                f"Could not write {filename} to environment directory ({env_dir}): {exc}",
-                "warning",
-            )
+            import errno
+            if exc.errno not in (errno.EACCES, errno.EROFS):
+                drona_add_message(
+                    f"Could not write {filename} to environment directory ({env_dir}): {exc}",
+                    "warning",
+                )
     if show_in_preview:
         if preview_order is not None:
             drona_add_additional_file(filename, filename, preview_order)
@@ -806,19 +808,23 @@ def generate_lightning_script_if_run(
     audioTransformType="mel_spectrogram",
 ):
     try:
-        with open("debug_args.txt", "w", encoding="utf-8") as debug_f:
-            debug_f.write(f"mode: {mode}\n")
-            debug_f.write(f"modelCategory: {modelCategory}\n")
-            debug_f.write(f"name: {name}\n")
-            debug_f.write(f"datasetType: {datasetType}\n")
-            debug_f.write(f"builtinDataset: {builtinDataset}\n")
-            debug_f.write(f"customDataPath: {customDataPath}\n")
-            debug_f.write(f"graphDatasetType: {graphDatasetType}\n")
-            debug_f.write(f"graphBuiltinDataset: {graphBuiltinDataset}\n")
-            debug_f.write(f"graphDataPath: {graphDataPath}\n")
-            debug_f.write(f"gnnHiddenDim: {gnnHiddenDim}\n")
-            debug_f.write(f"gnnNumLayers: {gnnNumLayers}\n")
-            debug_f.write(f"gnnLayerType: {gnnLayerType}\n")
+        loc = _normalize_location(job_location)
+        debug_dir = loc if loc else _get_env_dir()
+        if debug_dir:
+            debug_path = Path(debug_dir) / "debug_args.txt"
+            with open(debug_path, "w", encoding="utf-8") as debug_f:
+                debug_f.write(f"mode: {mode}\n")
+                debug_f.write(f"modelCategory: {modelCategory}\n")
+                debug_f.write(f"name: {name}\n")
+                debug_f.write(f"datasetType: {datasetType}\n")
+                debug_f.write(f"builtinDataset: {builtinDataset}\n")
+                debug_f.write(f"customDataPath: {customDataPath}\n")
+                debug_f.write(f"graphDatasetType: {graphDatasetType}\n")
+                debug_f.write(f"graphBuiltinDataset: {graphBuiltinDataset}\n")
+                debug_f.write(f"graphDataPath: {graphDataPath}\n")
+                debug_f.write(f"gnnHiddenDim: {gnnHiddenDim}\n")
+                debug_f.write(f"gnnNumLayers: {gnnNumLayers}\n")
+                debug_f.write(f"gnnLayerType: {gnnLayerType}\n")
     except Exception:
         pass
 

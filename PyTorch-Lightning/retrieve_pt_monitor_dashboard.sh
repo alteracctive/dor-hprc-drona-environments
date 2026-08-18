@@ -280,8 +280,12 @@ if status in ("COMPLETED", "COMPLETE") or display_epoch == max_epochs and ep_per
 else:
     overall_percent = int(((curr_ep + (ep_percent / 100.0)) / max_epochs) * 100)
 
-speed_matches = re.findall(r'(\d+(?:\.\d+)?\s*(?:it/s|s/it))', content)
-speed = speed_matches[-1] if speed_matches else "—"
+speed_matches = re.findall(r'(\d+(?:\.\d+)?)\s*(it/s|s/it)', content)
+if speed_matches:
+    val, unit = speed_matches[-1]
+    speed = f"{val} {unit}"
+else:
+    speed = "—"
 
 print(f"{display_epoch}|{max_epochs}|{ep_percent}|{overall_percent}|{speed}")
 EOF
