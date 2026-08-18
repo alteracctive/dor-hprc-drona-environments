@@ -66,12 +66,22 @@ def _gen_computer_vision_script(
     def setup(self, stage=None):
         self.train_ds = ImageSegmentationDataset(os.path.join(self.data_root, "train"), image_size=224)
         self.val_ds = ImageSegmentationDataset(os.path.join(self.data_root, "val"), image_size=224)
+        test_dir = os.path.join(self.data_root, "test")
+        if os.path.isdir(test_dir):
+            self.test_ds = ImageSegmentationDataset(test_dir, image_size=224)
+        else:
+            self.test_ds = None
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        if getattr(self, "test_ds", None) is not None:
+            return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return None
 '''
             else:
                 dm = f'''class LitDataModule(L.LightningDataModule):
@@ -85,12 +95,22 @@ def _gen_computer_vision_script(
     def setup(self, stage=None):
         self.train_ds = TensorSegmentationDataset(os.path.join(self.data_root, "train"), image_size=224)
         self.val_ds = TensorSegmentationDataset(os.path.join(self.data_root, "val"), image_size=224)
+        test_dir = os.path.join(self.data_root, "test")
+        if os.path.isdir(test_dir):
+            self.test_ds = TensorSegmentationDataset(test_dir, image_size=224)
+        else:
+            self.test_ds = None
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        if getattr(self, "test_ds", None) is not None:
+            return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return None
 '''
             ch, nc, sz, arch = 3, 1, 224, "unet"
         else:
@@ -111,12 +131,22 @@ def _gen_computer_vision_script(
         self.train_ds = ImageFolder(os.path.join(self.data_root, "train"), transform=self.transform)
         self.val_ds = ImageFolder(os.path.join(self.data_root, "val"), transform=self.transform)
         self.num_classes = len(self.train_ds.classes)
+        test_dir = os.path.join(self.data_root, "test")
+        if os.path.isdir(test_dir):
+            self.test_ds = ImageFolder(test_dir, transform=self.transform)
+        else:
+            self.test_ds = None
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        if getattr(self, "test_ds", None) is not None:
+            return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return None
 '''
             else:
                 dm = f'''class LitDataModule(L.LightningDataModule):
@@ -132,12 +162,22 @@ def _gen_computer_vision_script(
         self.train_ds = TensorFolderDataset(os.path.join(self.data_root, "train"), image_size=224)
         self.val_ds = TensorFolderDataset(os.path.join(self.data_root, "val"), image_size=224)
         self.num_classes = self.train_ds.num_classes
+        test_dir = os.path.join(self.data_root, "test")
+        if os.path.isdir(test_dir):
+            self.test_ds = TensorFolderDataset(test_dir, image_size=224)
+        else:
+            self.test_ds = None
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
 
     def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        if getattr(self, "test_ds", None) is not None:
+            return DataLoader(self.test_ds, batch_size=self.batch_size, num_workers=self.num_workers)
+        return None
 '''
             ch, nc, sz, arch = 3, "num_classes", 224, cv_model_arch
 
@@ -179,6 +219,14 @@ def _gen_computer_vision_script(
         acc = (logits.argmax(dim=1) == y).float().mean()
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_acc", acc, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_acc", acc, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
@@ -225,6 +273,14 @@ def _gen_computer_vision_script(
         acc = (logits.argmax(dim=1) == y).float().mean()
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_acc", acc, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_acc", acc, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
@@ -282,6 +338,14 @@ class LitModel(L.LightningModule):
         acc = (logits.argmax(dim=1) == y).float().mean()
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_acc", acc, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_acc", acc, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
@@ -356,6 +420,17 @@ class LitModel(L.LightningModule):
         iou = ((intersection + 1e-6) / (union + 1e-6)).mean()
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_iou", iou, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        preds = (logits > 0).float()
+        intersection = (preds * y).sum(dim=(2, 3))
+        union = (preds + y).clamp(max=1.0).sum(dim=(2, 3))
+        iou = ((intersection + 1e-6) / (union + 1e-6)).mean()
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_iou", iou, prog_bar=True)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)

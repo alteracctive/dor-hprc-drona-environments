@@ -74,7 +74,7 @@
         "remoteLabel": "local",
         "localLabel": "cluster",
         "showFiles": "False",
-        "help": "Path to dataset root with train/ and val/ subdirectories. Each class must be a subfolder (class name) containing standard raw images (.png, .jpg, .jpeg) corresponding to that class.",
+        "help": "Path to dataset root with train/, val/, and optionally test/ subdirectories. Each class must be a subfolder (class name) containing standard raw images (.png, .jpg, .jpeg) corresponding to that class.",
         "condition": "datasetType.custom",
         "files": "False"
       },

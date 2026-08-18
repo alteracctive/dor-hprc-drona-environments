@@ -781,6 +781,10 @@ def main():
     
     # Run the model fitting phase
     trainer.fit(model, datamodule=datamodule)
+
+    # Run the model testing phase
+    if getattr(datamodule, "test_ds", None) is not None:
+        trainer.test(model, datamodule=datamodule)
 {checkpoint_post_save}
 if __name__ == "__main__":
     main()

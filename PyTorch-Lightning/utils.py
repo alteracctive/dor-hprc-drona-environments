@@ -196,6 +196,7 @@ def setup_pytorch_modules(
     audio_builtin_dataset="AISHELL",
     gpu="",
     graph_dataset_type="builtin",
+    export_onnx="No",
 ):
     """Return module load commands for the given model category and dataset."""
     cluster, cluster_module = retrieve_cluster_info()
@@ -254,9 +255,13 @@ def setup_pytorch_modules(
             f"module load {tv_mod} 2>/dev/null || true\n"
         )
         
+    onnx_cmd = ""
+    if _checkbox_on(export_onnx):
+        onnx_cmd = "\n# Load ONNX cluster module\nmodule load ONNX/1.15.0 2>/dev/null || true\n"
+
     return (
         "# Load cluster PyTorch Lightning stack and datasets\n"
-        f"{module_use_cmd}{base}{torchvision_cmd}{dataset_cmd}"
+        f"{module_use_cmd}{base}{torchvision_cmd}{dataset_cmd}{onnx_cmd}"
     )
 
 
@@ -276,13 +281,14 @@ def setup_pytorch_modules_if_run(
     audio_builtin_dataset="AISHELL",
     gpu="",
     graph_dataset_type="builtin",
+    export_onnx="No",
 ):
     if mode == "monitor":
         return "# monitor mode — no training job"
     return setup_pytorch_modules(
         model_category, dataset_type, builtin_dataset, seq_dataset, graph_dataset, gen_dataset,
         nlp_dataset_type, nlp_builtin_dataset, tab_dataset_type, tab_builtin_dataset, audio_dataset_type, audio_builtin_dataset,
-        gpu, graph_dataset_type
+        gpu, graph_dataset_type, export_onnx
     )
 
 
@@ -1134,6 +1140,24 @@ def generate_lightning_script(
 
     # Export final model to ONNX
     try:
+        try:
+            import onnx
+        except ImportError:
+            import subprocess
+            import sys
+            print("ONNX library not found. Attempting to install 'onnx' via pip...")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "onnx"])
+                import onnx
+                print("ONNX library successfully installed!")
+            except Exception as pip_err:
+                raise ImportError(
+                    f"torch>=2.0 requires the 'onnx' package. "
+                    f"Pip install failed ({pip_err}). "
+                    f"Please load the cluster module: 'module load GCC/12.3.0 ONNX/1.15.0' "
+                    f"or run 'pip install onnx' in your virtual environment."
+                )
+
         import inspect
         model.eval()
         
