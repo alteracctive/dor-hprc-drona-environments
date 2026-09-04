@@ -14,8 +14,5 @@ module load WebProxy
 
 [setupEnv]
 
-if [ -f prefetch_data.py ]; then
-    python3 prefetch_data.py || exit 1
-fi
 
 /sw/local/bin/sbatch [job-file-name]

@@ -133,7 +133,10 @@ def retrieve_cluster_info():
     if module_directory not in sys.path:
         sys.path.insert(0, f"{module_directory}")
 
-    cluster = subprocess.check_output(["/sw/local/bin/clustername"], text=True).strip()
+    try:
+        cluster = subprocess.check_output(["/sw/local/bin/clustername"], text=True).strip()
+    except Exception:
+        cluster = "defaultcluster"
     if importlib.util.find_spec(f"clusters.{cluster}") is not None:
         cluster_module = importlib.import_module(f"clusters.{cluster}")
     else:
@@ -256,8 +259,12 @@ def setup_pytorch_modules(
         )
         
     onnx_cmd = ""
-    if _checkbox_on(export_onnx):
-        onnx_cmd = "\n# Load ONNX cluster module\nmodule load ONNX/1.15.0 2>/dev/null || true\n"
+    if _checkbox_on(export_onnx) and model_category != "gnn":
+        if "CUDA-12.6.0" in base:
+            # Overwrite base modules to GCC/12.3.0 OpenMPI/4.1.5 to make ONNX/1.15.0 (GCC/12.3.0) available
+            # and avoid the Lmod toolchain swap that deactivates the CUDA-12.6.0 packages.
+            base = "module load GCC/12.3.0 OpenMPI/4.1.5 PyTorch-Lightning/2.2.1-CUDA-12.1.1\nmodule load CUDA/12.1.1 2>/dev/null || true"
+        onnx_cmd = "\n# Load ONNX cluster module\nmodule load GCC/12.3.0 ONNX/1.15.0\n"
 
     return (
         "# Load cluster PyTorch Lightning stack and datasets\n"
@@ -349,28 +356,28 @@ def _normalize_location(location):
     return loc
 
 
-def _write_staged_file(env_dir, job_location, filename, content, show_in_preview=True, preview_order=None):
-    """Write a generated file directly into the job folder."""
-    if env_dir:
-        try:
-            env_dest = Path(env_dir) / filename
-            env_dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(env_dest, "w", encoding="utf-8", newline="\n") as f:
-                f.write(content)
-        except OSError as exc:
-            import errno
-            if exc.errno not in (errno.EACCES, errno.EROFS):
-                drona_add_message(
-                    f"Could not write {filename} to environment directory ({env_dir}): {exc}",
-                    "warning",
-                )
-    if show_in_preview:
-        if preview_order is not None:
-            drona_add_additional_file(filename, filename, preview_order)
-        else:
-            drona_add_additional_file(filename, filename)
+def _is_valid_user_location(job_location):
     loc = _normalize_location(job_location)
-    if loc:
+    if not loc:
+        return False
+    try:
+        p = Path(loc).resolve()
+        env_p = _get_env_dir().resolve()
+        if not p.is_absolute():
+            return False
+        if p == env_p or env_p in p.parents or p in env_p.parents:
+            return False
+        if p == Path(".").resolve() or str(p) in ("/", "\\"):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def _write_staged_file(env_dir, job_location, filename, content, show_in_preview=True, preview_order=None):
+    """Write a generated file directly into the job folder if location is valid. Never write to '.' or 'env_dir'."""
+    if _is_valid_user_location(job_location):
+        loc = _normalize_location(job_location)
         dest = Path(loc) / filename
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -381,6 +388,26 @@ def _write_staged_file(env_dir, job_location, filename, content, show_in_preview
                 f"Could not write {filename} to job directory ({loc}): {exc}",
                 "warning",
             )
+        if show_in_preview:
+            actual_path = str(dest.resolve())
+            try:
+                if preview_order is not None:
+                    drona_add_additional_file(actual_path, filename, preview_order)
+                else:
+                    drona_add_additional_file(actual_path, filename)
+            except Exception:
+                pass
+    else:
+        # Location is not yet available/valid (e.g. during UI preview)
+        # Do NOT write to '.' or 'env_dir'. Provide in-memory preview if supported.
+        if show_in_preview:
+            try:
+                if preview_order is not None:
+                    drona_add_additional_file(content, filename, preview_order)
+                else:
+                    drona_add_additional_file(content, filename)
+            except Exception:
+                pass
 
 
 def _lookup_workflow_location(workflow_id):
@@ -471,9 +498,18 @@ def build_monitor_preview_html(mode, pt_workflow, job_dir):
         f"{body}\n"
         "</body></html>\n"
     )
-    preview_path = env_dir / "monitor_dashboard.html"
-    preview_path.write_text(html, encoding="utf-8")
-    drona_add_additional_file("monitor_dashboard.html", "Monitor", 0)
+    if _is_valid_user_location(location):
+        preview_path = Path(location) / "monitor_dashboard.html"
+        try:
+            preview_path.write_text(html, encoding="utf-8")
+            drona_add_additional_file(str(preview_path.resolve()), "Monitor", 0)
+        except OSError as exc:
+            drona_add_message(f"Could not write monitor dashboard: {exc}", "warning")
+    else:
+        try:
+            drona_add_additional_file(html, "Monitor", 0)
+        except Exception:
+            pass
     return ""
 
 
@@ -538,137 +574,7 @@ def retrieve_tasks_and_other_resources(mode, nodes, tasks, cpus, mem, gpu, numgp
 
 # ── Shared template blocks embedded in generated scripts ──────────────────────
 
-_DOWNLOAD_ONLY_BLOCK = '''
-import gzip
-import os
-import struct
-import urllib.request
-from pathlib import Path
-
-
-_PROXY_KEYS = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
-
-
-class _NoProxy:
-    def __enter__(self):
-        self._saved = {k: os.environ.pop(k) for k in _PROXY_KEYS if k in os.environ}
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        os.environ.update(self._saved)
-
-
-def _retrieve(url, dest):
-    import ssl
-    context = ssl._create_unverified_context()
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, context=context, timeout=20) as response:
-        with open(dest, "wb") as f:
-            while True:
-                chunk = response.read(8192)
-                if not chunk:
-                    break
-                f.write(chunk)
-
-
-def _download(url, dest, mirrors=()):
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        return
-    errors = []
-    print(f"Download started for {dest.name}...")
-    for candidate in (url,) + tuple(mirrors):
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        for use_proxy in (True, False):
-            try:
-                if use_proxy:
-                    _retrieve(candidate, tmp)
-                else:
-                    with _NoProxy():
-                        _retrieve(candidate, tmp)
-                tmp.rename(dest)
-                print(f"Download finished successfully for {dest.name}.")
-                return
-            except Exception as err:
-                last_err = err
-                if tmp.exists():
-                    tmp.unlink(missing_ok=True)
-        errors.append(f"{candidate}: {last_err}")
-    print(f"Download failed for {dest.name}.")
-    raise RuntimeError(
-        "Failed to download "
-        f"{dest.name}. Prepared datasets are prefetched on the submit node before "
-        f"the Slurm job starts; compute nodes have no internet access. "
-        f"Tried: {'; '.join(errors)}"
-    )
-
-
-def _idx_dataset_spec(name):
-    if name == "MNIST":
-        return (
-            "MNIST",
-            "https://storage.googleapis.com/cvdf-datasets/mnist",
-            ("https://yann.lecun.com/exdb/mnist",),
-        )
-    return (
-        "FashionMNIST",
-        "https://storage.googleapis.com/cvdf-datasets/fashion-mnist",
-        (
-            "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com",
-            "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion",
-        ),
-    )
-
-
-def _ensure_idx_dataset_files(root, name):
-    subdir, primary, fallbacks = _idx_dataset_spec(name)
-    files = (
-        "train-images-idx3-ubyte.gz",
-        "train-labels-idx1-ubyte.gz",
-        "t10k-images-idx3-ubyte.gz",
-        "t10k-labels-idx1-ubyte.gz",
-    )
-    root = Path(root) / subdir
-    for fname in files:
-        _download(
-            f"{primary}/{fname}",
-            root / fname,
-            mirrors=tuple(f"{base}/{fname}" for base in fallbacks),
-        )
-
-
-def _ensure_cifar_dataset_files(root, name):
-    import tarfile
-    root = Path(root)
-    if name == "CIFAR10":
-        archive = "cifar-10-python.tar.gz"
-        folder = "cifar-10-batches-py"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/cifar-10-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar10/cifar-10-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
-        )
-    else:
-        archive = "cifar-100-python.tar.gz"
-        folder = "cifar-100-python"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar100/resolve/main/cifar-100-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar100/cifar-100-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
-        )
-    dest_archive = root / archive
-    dest_folder = root / folder
-    if dest_folder.exists():
-        print(f"{name} folder already exists under {root}. Skipping download/extraction.")
-        return
-    print(f"Downloading {name} dataset from {primary}...")
-    _download(primary, dest_archive, mirrors=mirrors)
-    print(f"Extracting {name} dataset archive {archive}...")
-    with tarfile.open(dest_archive, "r:gz") as tar:
-        tar.extractall(path=root)
-    print(f"Successfully extracted {name} dataset to {dest_folder}.")
-'''
+_DOWNLOAD_ONLY_BLOCK = ""
 
 
 _DATA_HELPERS_BLOCK = ""
@@ -812,12 +718,13 @@ def generate_lightning_script_if_run(
     audioCustomPath="",
     audioModelType="classification",
     audioTransformType="mel_spectrogram",
+    cvImageSize="0",
+    cvChannels="3",
 ):
     try:
-        loc = _normalize_location(job_location)
-        debug_dir = loc if loc else _get_env_dir()
-        if debug_dir:
-            debug_path = Path(debug_dir) / "debug_args.txt"
+        if _is_valid_user_location(job_location):
+            loc = _normalize_location(job_location)
+            debug_path = Path(loc) / "debug_args.txt"
             with open(debug_path, "w", encoding="utf-8") as debug_f:
                 debug_f.write(f"mode: {mode}\n")
                 debug_f.write(f"modelCategory: {modelCategory}\n")
@@ -831,6 +738,8 @@ def generate_lightning_script_if_run(
                 debug_f.write(f"gnnHiddenDim: {gnnHiddenDim}\n")
                 debug_f.write(f"gnnNumLayers: {gnnNumLayers}\n")
                 debug_f.write(f"gnnLayerType: {gnnLayerType}\n")
+                debug_f.write(f"cvImageSize: {cvImageSize}\n")
+                debug_f.write(f"cvChannels: {cvChannels}\n")
     except Exception:
         pass
 
@@ -873,6 +782,8 @@ def generate_lightning_script_if_run(
         audioCustomPath,
         audioModelType,
         audioTransformType,
+        cvImageSize,
+        cvChannels,
     )
 
 
@@ -945,6 +856,8 @@ def generate_lightning_script(
     audioCustomPath="",
     audioModelType="classification",
     audioTransformType="mel_spectrogram",
+    cvImageSize="0",
+    cvChannels="3",
 ):
     # ── Parse & validate shared params ────────────────────────────────────────
     category = (modelCategory or "computer_vision").strip()
@@ -1010,6 +923,8 @@ def generate_lightning_script(
             logger_lines, callback_block,
             cv_model_arch=cvModelArch,
             cv_dataset_format=cvDatasetFormat,
+            cv_image_size=cvImageSize,
+            cv_channels=cvChannels,
         )
 
     elif category == "sequential":
@@ -1135,29 +1050,12 @@ def generate_lightning_script(
     if train_script is None:
         return ""  # error already added by sub-generator
 
-    if _checkbox_on(exportOnnx):
+    if _checkbox_on(exportOnnx) and category != "gnn":
         onnx_export_code = '''    trainer.fit(model, datamodule=datamodule)
 
     # Export final model to ONNX
     try:
-        try:
-            import onnx
-        except ImportError:
-            import subprocess
-            import sys
-            print("ONNX library not found. Attempting to install 'onnx' via pip...")
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "onnx"])
-                import onnx
-                print("ONNX library successfully installed!")
-            except Exception as pip_err:
-                raise ImportError(
-                    f"torch>=2.0 requires the 'onnx' package. "
-                    f"Pip install failed ({pip_err}). "
-                    f"Please load the cluster module: 'module load GCC/12.3.0 ONNX/1.15.0' "
-                    f"or run 'pip install onnx' in your virtual environment."
-                )
-
+        import onnx
         import inspect
         model.eval()
         
@@ -1205,42 +1103,31 @@ def generate_lightning_script(
         os.makedirs(os.path.dirname(onnx_path), exist_ok=True)
         model.to_onnx(onnx_path, input_sample, export_params=True)
         print(f"Successfully exported ONNX model at: {onnx_path}")
+    except ImportError:
+        print("ERROR: ONNX package not available. Please ensure 'module load GCC/12.3.0 ONNX/1.15.0' is loaded.")
     except Exception as e:
         print(f"Could not export model to ONNX: {e}")'''
         train_script = train_script.replace("    trainer.fit(model, datamodule=datamodule)", onnx_export_code)
 
-    # ── Write generated files ─────────────────────────────────────────────────
+    # ── Write generated files directly to job folder (only when valid) ───────
     _write_staged_file(env_dir, job_location, "train.py", train_script)
-    if prefetch_script:
-        _write_staged_file(env_dir, job_location, "prefetch_data.py", prefetch_script)
-    else:
-        # Clean up any leftover prefetch_data.py file if it exists
-        for base_dir in (env_dir, job_location):
-            if base_dir:
-                loc = _normalize_location(base_dir)
-                if loc:
-                    p = Path(loc) / "prefetch_data.py"
-                    if p.is_file():
-                        try:
-                            p.unlink()
-                        except Exception:
-                            pass
 
-    port_finder = env_dir / "find_free_tb_port.sh"
-    if port_finder.is_file():
-        script_content = port_finder.read_text(encoding="utf-8")
-    else:
-        script_content = _FIND_FREE_TB_PORT_SCRIPT
+    if _is_valid_user_location(job_location):
+        port_finder = env_dir / "find_free_tb_port.sh"
+        if port_finder.is_file():
+            script_content = port_finder.read_text(encoding="utf-8")
+        else:
+            script_content = _FIND_FREE_TB_PORT_SCRIPT
 
-    _write_staged_file(
-        env_dir,
-        job_location,
-        "find_free_tb_port.sh",
-        script_content,
-        show_in_preview=False,
-    )
+        _write_staged_file(
+            env_dir,
+            job_location,
+            "find_free_tb_port.sh",
+            script_content,
+            show_in_preview=False,
+        )
 
-    return ""
+    return train_script
 
 
 def setup_tensorboard_in_job(mode, enableTensorBoard, location):

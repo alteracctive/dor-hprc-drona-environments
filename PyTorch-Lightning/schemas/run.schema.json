@@ -60,7 +60,7 @@
             "label": "Prepared dataset",
             "name": "builtinDataset",
             "value": "ImageNet",
-            "help": "Cluster dataset modules are loaded directly; prepared benchmarks are fetched automatically on the submit node.",
+            "help": "Cluster dataset modules are loaded directly from cluster storage. Direct internet downloads are disabled. For other datasets, choose Import to provide your data path.",
             "options": [
               { "value": "ImageNet", "label": "ImageNet (HPRC Datasets/ImageNet-PyTorch)" }
             ]
@@ -103,6 +103,32 @@
         ],
         "condition": "datasetType.custom",
         "help": "Choose whether your custom data folder contains raw images (organized by class subdirectories, or image/mask subdirectories for UNet) or pre-processed PyTorch tensor (.pt) files."
+      }
+    }
+  },
+
+  "ContainerCVSettings": {
+    "type": "rowContainer",
+    "label": "Image Specifications",
+    "condition": "modelCategory.computer_vision",
+    "elements": {
+      "cvImageSize": {
+        "type": "number",
+        "label": "Target image size",
+        "name": "cvImageSize",
+        "value": "0",
+        "help": "Target image dimension (H=W in pixels) for resizing during training. Default is 0 for automatic detection of image size."
+      },
+      "cvChannels": {
+        "type": "select",
+        "label": "Color mode / channels",
+        "name": "cvChannels",
+        "value": "3",
+        "options": [
+          { "value": "3", "label": "RGB (3 channels)" },
+          { "value": "1", "label": "Grayscale (1 channel)" }
+        ],
+        "help": "Number of input channels. Use Grayscale (1 channel) for MNIST or grayscale medical scans, RGB (3 channels) for color photos."
       }
     }
   },
@@ -722,6 +748,7 @@
         "label": "Export final model to ONNX",
         "name": "exportOnnx",
         "value": "No",
+        "condition": "!modelCategory.gnn",
         "help": "When enabled, exports the trained model to ONNX format (final_model.onnx) at the end of the training run."
       }
     }

@@ -164,59 +164,12 @@ def _gen_sequential_script(
         self.features = features[:split] if train else features[split:]
         self.target = target[:split] if train else target[split:]
         self.num_features = 1'''
-        else: # sunspots
-            dataset_init_block = f'''# Load Monthly Mean Total Sunspot Number dataset (1749 to July 2018)
-        import os
-        import urllib.request
-        from pathlib import Path
-        import pandas as pd
-        import ssl
-        
-        data_dir = Path("data")
-        data_dir.mkdir(exist_ok=True)
-        dest = data_dir / "sunspots.csv"
-        
-        if not dest.exists():
-            print("Downloading Sunspots dataset...")
-            url = "https://raw.githubusercontent.com/dicodingacademy/assets/main/Simulation/machine_learning/sunspots.csv"
-            context = ssl._create_unverified_context()
-            req = urllib.request.Request(url, headers={{"User-Agent": "Mozilla/5.0"}})
-            try:
-                with urllib.request.urlopen(req, context=context) as response:
-                    with open(dest, "wb") as f:
-                        f.write(response.read())
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to download Sunspots dataset. "
-                    f"Prepared datasets are prefetched on the submit node. Error: {{e}}"
-                )
-                
-        df = pd.read_csv(dest)
-        # Columns: Unnamed: 0, Date, Monthly Mean Total Sunspot Number
-        # Use third column as target (sunspot counts)
-        signal = df.iloc[:, 2].values.astype(np.float32)
-        
-        features = signal[:-{p_len}].reshape(-1, 1).astype(np.float32)
-        if TASK_TYPE == "classification":
-            # Classify whether next sequence value increases (1) or decreases (0)
-            diff = np.diff(signal)
-            labels = (diff > 0).astype(np.int64)
-            target = labels[seq_len - 1 : len(features) - {p_len}]
-            features = features[:len(target) + seq_len]
         else:
-            target = signal[{p_len}:].astype(np.float32)
-            
-        n = len(target)
-        split = int(n * train_frac)
-        
-        # Normalize features
-        self.feat_mean = features.mean(axis=0)
-        self.feat_std = features.std(axis=0) + 1e-8
-        features = (features - self.feat_mean) / self.feat_std
-        
-        self.features = features[:split] if train else features[split:]
-        self.target = target[:split] if train else target[split:]
-        self.num_features = 1'''
+            raise ValueError(
+                f"Prepared dataset '{seq_builtin_dataset}' is not available via cluster modules. "
+                "Direct internet downloads are disabled. Please select Mackey-Glass, fastText, AISHELL, or provide a custom CSV."
+            )
+
 
     # Configure model block based on seq_model_type
     if seq_model_type == "gru":
@@ -445,34 +398,5 @@ class LitModel(L.LightningModule):
     train_script = train_script.replace("        # __LOGGER_LINES__", "\n".join(logger_lines))
     train_script = train_script.replace("    # __CALLBACK_BLOCK__", "    " + callback_block.replace("\n", "\n    "))
 
-    prefetch_script = None
-    if seq_dataset_type == "builtin" and seq_builtin_dataset in ("sunspots", "weather"):
-        prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download Monthly Sunspots dataset on the submit node."""
+    return train_script, None
 
-import urllib.request
-import ssl
-from pathlib import Path
-
-URL = "https://raw.githubusercontent.com/dicodingacademy/assets/main/Simulation/machine_learning/sunspots.csv"
-DEST = Path("data") / "sunspots.csv"
-
-def main():
-    print(f"Downloading Sunspots dataset to {{DEST}}...")
-    DEST.parent.mkdir(exist_ok=True)
-    context = ssl._create_unverified_context()
-    req = urllib.request.Request(URL, headers={{"User-Agent": "Mozilla/5.0"}})
-    try:
-        with urllib.request.urlopen(req, context=context) as response:
-            with open(DEST, "wb") as f:
-                f.write(response.read())
-        print(f"Prefetch complete. File saved to {{DEST}}")
-    except Exception as e:
-        print(f"Error downloading Sunspots dataset: {{e}}")
-        raise e
-
-if __name__ == "__main__":
-    main()
-'''
-
-    return train_script, prefetch_script

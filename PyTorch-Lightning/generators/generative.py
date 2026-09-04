@@ -6,7 +6,6 @@ from .helpers import (
     _LIGHTNING_IMPORT_BLOCK,
     _get_additional_imports,
     _get_data_helpers,
-    _DOWNLOAD_ONLY_BLOCK,
 )
 
 def _drona_msg(msg, level="warning"):
@@ -27,35 +26,10 @@ def _gen_generative_script(
     use_builtin = gen_dataset_type != "custom"
 
     if use_builtin:
-        if gen_dataset_type in ("MNIST", "FashionMNIST"):
-            in_ch, img_sz = 1, 28
-            prefetch_script = f'''#!/usr/bin/env python3
-"""Pre-download prepared dataset for VAE training."""
-
-import gzip
-import os
-import struct
-import urllib.request
-from pathlib import Path
-
-DATASET = "{_py_str(gen_dataset_type)}"
-DATA_DIR = "{_py_str(cache_dir)}"
-
-{_DOWNLOAD_ONLY_BLOCK}
-
-def main():
-    if DATASET in ("MNIST", "FashionMNIST"):
-        _ensure_idx_dataset_files(DATA_DIR, DATASET)
-    print(f"Prefetched {{DATASET}} under {{DATA_DIR}}")
-
-if __name__ == "__main__":
-    main()
-'''
-        elif gen_dataset_type == "llava-onevision":
+        if gen_dataset_type == "llava-onevision":
             in_ch, img_sz = 3, 224
-            prefetch_script = None
         else:
-            raise ValueError(f"Unsupported prepared generative dataset: {gen_dataset_type}")
+            raise ValueError(f"Prepared generative dataset '{gen_dataset_type}' is not available via cluster modules. Direct internet downloads are disabled. Please provide a custom dataset directory or select LLaVA-OneVision.")
         dm = f'''class LitDataModule(L.LightningDataModule):
     """DataModule managing downloads, setup, and data loading for VAE builtin datasets."""
     def __init__(self, data_dir=DATA_DIR, batch_size={bs}, num_workers={nw}):
@@ -401,4 +375,5 @@ if __name__ == "__main__":
     train_script = train_script.replace("        # __LOGGER_LINES__", "\n".join(logger_lines))
     train_script = train_script.replace("    # __CALLBACK_BLOCK__", "    " + callback_block.replace("\n", "\n    "))
 
-    return train_script, prefetch_script
+    return train_script, None
+

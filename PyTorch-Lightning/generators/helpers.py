@@ -1,131 +1,7 @@
 import os
 import re
 import json
-import gzip
-import struct
-import urllib.request
-import ssl
 from pathlib import Path
-
-# ── Base Constants & Proxy Helpers ─────────────────────────────────────────────
-
-_PROXY_KEYS = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
-
-class _NoProxy:
-    def __enter__(self):
-        self._saved = {k: os.environ.pop(k) for k in _PROXY_KEYS if k in os.environ}
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        os.environ.update(self._saved)
-
-def _retrieve(url, dest):
-    context = ssl._create_unverified_context()
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, context=context, timeout=20) as response:
-        with open(dest, "wb") as f:
-            while True:
-                chunk = response.read(8192)
-                if not chunk:
-                    break
-                f.write(chunk)
-
-def _download(url, dest, mirrors=()):
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        return
-    errors = []
-    print(f"Download started for {dest.name}...")
-    for candidate in (url,) + tuple(mirrors):
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        for use_proxy in (True, False):
-            try:
-                if use_proxy:
-                    _retrieve(candidate, tmp)
-                else:
-                    with _NoProxy():
-                        _retrieve(candidate, tmp)
-                tmp.rename(dest)
-                print(f"Download finished successfully for {dest.name}.")
-                return
-            except Exception as err:
-                last_err = err
-                if tmp.exists():
-                    tmp.unlink(missing_ok=True)
-        errors.append(f"{candidate}: {last_err}")
-    print(f"Download failed for {dest.name}.")
-    raise RuntimeError(
-        "Failed to download "
-        f"{dest.name}. Prepared datasets are prefetched on the submit node before "
-        f"the Slurm job starts; compute nodes have no internet access. "
-        f"Tried: {'; '.join(errors)}"
-    )
-
-# ── Dataset Loading Specifications ─────────────────────────────────────────────
-
-def _idx_dataset_spec(name):
-    if name == "MNIST":
-        return (
-            "MNIST",
-            "https://storage.googleapis.com/cvdf-datasets/mnist",
-            ("https://yann.lecun.com/exdb/mnist",),
-        )
-    return (
-        "FashionMNIST",
-        "https://storage.googleapis.com/cvdf-datasets/fashion-mnist",
-        (
-            "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com",
-            "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion",
-        ),
-    )
-
-def _ensure_idx_dataset_files(root, name):
-    subdir, primary, fallbacks = _idx_dataset_spec(name)
-    files = (
-        "train-images-idx3-ubyte.gz",
-        "train-labels-idx1-ubyte.gz",
-        "t10k-images-idx3-ubyte.gz",
-        "t10k-labels-idx1-ubyte.gz",
-    )
-    root = Path(root) / subdir
-    for fname in files:
-        _download(
-            f"{primary}/{fname}",
-            root / fname,
-            mirrors=tuple(f"{base}/{fname}" for base in fallbacks),
-        )
-
-def _ensure_cifar_dataset_files(root, name):
-    import tarfile
-    root = Path(root)
-    if name == "CIFAR10":
-        archive = "cifar-10-python.tar.gz"
-        folder = "cifar-10-batches-py"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/cifar-10-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar10/cifar-10-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
-        )
-    else:
-        archive = "cifar-100-python.tar.gz"
-        folder = "cifar-100-python"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar100/resolve/main/cifar-100-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar100/cifar-100-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
-        )
-    dest_archive = root / archive
-    dest_folder = root / folder
-    if dest_folder.exists():
-        print(f"{name} folder already exists under {root}. Skipping download/extraction.")
-        return
-    print(f"Downloading {name} dataset from {primary}...")
-    _download(primary, dest_archive, mirrors=mirrors)
-    print(f"Extracting {name} dataset archive {archive}...")
-    with tarfile.open(dest_archive, "r:gz") as tar:
-        tar.extractall(path=root)
-    print(f"Successfully extracted {name} dataset to {dest_folder}.")
 
 # ── General Utility Helpers ───────────────────────────────────────────────────
 
@@ -148,130 +24,8 @@ def _load_template(name):
 
 # ── String Templates for Script Construction ───────────────────────────────
 
-_DOWNLOAD_ONLY_BLOCK = '''
-_PROXY_KEYS = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
+_DOWNLOAD_ONLY_BLOCK = ""
 
-
-class _NoProxy:
-    def __enter__(self):
-        self._saved = {k: os.environ.pop(k) for k in _PROXY_KEYS if k in os.environ}
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        os.environ.update(self._saved)
-
-
-def _retrieve(url, dest):
-    import ssl
-    context = ssl._create_unverified_context()
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, context=context, timeout=20) as response:
-        with open(dest, "wb") as f:
-            while True:
-                chunk = response.read(8192)
-                if not chunk:
-                    break
-                f.write(chunk)
-
-
-def _download(url, dest, mirrors=()):
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        return
-    errors = []
-    print(f"Download started for {dest.name}...")
-    for candidate in (url,) + tuple(mirrors):
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        for use_proxy in (True, False):
-            try:
-                if use_proxy:
-                    _retrieve(candidate, tmp)
-                else:
-                    with _NoProxy():
-                        _retrieve(candidate, tmp)
-                tmp.rename(dest)
-                print(f"Download finished successfully for {dest.name}.")
-                return
-            except Exception as err:
-                last_err = err
-                if tmp.exists():
-                    tmp.unlink(missing_ok=True)
-        errors.append(f"{candidate}: {last_err}")
-    print(f"Download failed for {dest.name}.")
-    raise RuntimeError(
-        "Failed to download "
-        f"{dest.name}. Prepared datasets are prefetched on the submit node before "
-        f"the Slurm job starts; compute nodes have no internet access. "
-        f"Tried: {'; '.join(errors)}"
-    )
-
-
-def _idx_dataset_spec(name):
-    if name == "MNIST":
-        return (
-            "MNIST",
-            "https://storage.googleapis.com/cvdf-datasets/mnist",
-            ("https://yann.lecun.com/exdb/mnist",),
-        )
-    return (
-        "FashionMNIST",
-        "https://storage.googleapis.com/cvdf-datasets/fashion-mnist",
-        (
-            "http://fashion-mnist.s3-website.eu-central-1.amazonaws.com",
-            "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion",
-        ),
-    )
-
-
-def _ensure_idx_dataset_files(root, name):
-    subdir, primary, fallbacks = _idx_dataset_spec(name)
-    files = (
-        "train-images-idx3-ubyte.gz",
-        "train-labels-idx1-ubyte.gz",
-        "t10k-images-idx3-ubyte.gz",
-        "t10k-labels-idx1-ubyte.gz",
-    )
-    root = Path(root) / subdir
-    for fname in files:
-        _download(
-            f"{primary}/{fname}",
-            root / fname,
-            mirrors=tuple(f"{base}/{fname}" for base in fallbacks),
-        )
-
-
-def _ensure_cifar_dataset_files(root, name):
-    import tarfile
-    root = Path(root)
-    if name == "CIFAR10":
-        archive = "cifar-10-python.tar.gz"
-        folder = "cifar-10-batches-py"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/cifar-10-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar10/cifar-10-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
-        )
-    else:
-        archive = "cifar-100-python.tar.gz"
-        folder = "cifar-100-python"
-        primary = "https://huggingface.co/datasets/uoft-cs/cifar100/resolve/main/cifar-100-python.tar.gz"
-        mirrors = (
-            "https://data.brainchip.com/dataset-mirror/cifar100/cifar-100-python.tar.gz",
-            "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
-        )
-    dest_archive = root / archive
-    dest_folder = root / folder
-    if dest_folder.exists():
-        print(f"{name} folder already exists under {root}. Skipping download/extraction.")
-        return
-    print(f"Downloading {name} dataset from {primary}...")
-    _download(primary, dest_archive, mirrors=mirrors)
-    print(f"Extracting {name} dataset archive {archive}...")
-    with tarfile.open(dest_archive, "r:gz") as tar:
-        tar.extractall(path=root)
-    print(f"Successfully extracted {name} dataset to {dest_folder}.")
-'''
 
 _LIGHTNING_IMPORT_BLOCK = '''
 # Configure PyTorch Lightning / Lightning package imports (compatibility wrapper)
@@ -299,20 +53,7 @@ def _get_additional_imports(ds_type, dataset_name, dataset_format="tensors"):
             imports.append("from PIL import Image")
             imports.append("import torchvision.transforms.functional as TF")
     else:  # builtin
-        if dataset_name in ("MNIST", "FashionMNIST"):
-            imports.append("import gzip")
-            imports.append("import struct")
-            imports.append("import urllib.request")
-            imports.append("from pathlib import Path")
-            imports.append("import numpy as np")
-            imports.append("from torch.utils.data import Dataset")
-        elif dataset_name in ("CIFAR10", "CIFAR100"):
-            imports.append("import pickle")
-            imports.append("import urllib.request")
-            imports.append("from pathlib import Path")
-            imports.append("import numpy as np")
-            imports.append("from torch.utils.data import Dataset")
-        elif dataset_name in ("ImageNet", "COCO", "CC3M", "CAMUS", "llava-onevision"):
+        if dataset_name in ("ImageNet", "COCO", "CC3M", "CAMUS", "llava-onevision"):
             imports.append("import torchvision.datasets as datasets")
             imports.append("import torchvision.transforms as transforms")
             if dataset_name in ("COCO", "CC3M", "CAMUS", "llava-onevision"):
@@ -414,8 +155,9 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
         
-        img = img.resize((self.image_size, self.image_size), Image.BILINEAR)
-        mask = mask.resize((self.image_size, self.image_size), Image.NEAREST)
+        if self.image_size > 0:
+            img = img.resize((self.image_size, self.image_size), Image.BILINEAR)
+            mask = mask.resize((self.image_size, self.image_size), Image.NEAREST)
         
         x = TF.to_tensor(img)
         y = TF.to_tensor(mask)
@@ -459,11 +201,12 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
         if x.dim() == 2: x = x.unsqueeze(0)
         if y.dim() == 2: y = y.unsqueeze(0)
         
-        # Interpolate if size mismatch
-        if x.shape[-1] != self.image_size or x.shape[-2] != self.image_size:
-            x = F.interpolate(x.unsqueeze(0).float(), size=(self.image_size, self.image_size), mode="bilinear", align_corners=False).squeeze(0)
-        if y.shape[-1] != self.image_size or y.shape[-2] != self.image_size:
-            y = F.interpolate(y.unsqueeze(0).float(), size=(self.image_size, self.image_size), mode="nearest").squeeze(0)
+        # Interpolate if size mismatch and target size is specified (> 0)
+        if self.image_size > 0:
+            if x.shape[-1] != self.image_size or x.shape[-2] != self.image_size:
+                x = F.interpolate(x.unsqueeze(0).float(), size=(self.image_size, self.image_size), mode="bilinear", align_corners=False).squeeze(0)
+            if y.shape[-1] != self.image_size or y.shape[-2] != self.image_size:
+                y = F.interpolate(y.unsqueeze(0).float(), size=(self.image_size, self.image_size), mode="nearest").squeeze(0)
             
         return x.float(), y.float()
 '''
@@ -514,8 +257,8 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
         if x.dim() == 2:
             x = x.unsqueeze(0)
             
-        # Interpolate image if it doesn't match target size
-        if x.shape[-1] != self.image_size or x.shape[-2] != self.image_size:
+        # Interpolate image if target size is specified (> 0) and doesn't match
+        if self.image_size > 0 and (x.shape[-1] != self.image_size or x.shape[-2] != self.image_size):
             x = x.unsqueeze(0) if x.dim() == 3 else x
             x = F.interpolate(x.float(), size=(self.image_size, self.image_size), mode="bilinear", align_corners=False)
             x = x.squeeze(0)
@@ -526,111 +269,14 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
         return len(self.class_to_idx)
 '''
 
-    if dataset_name in ("MNIST", "FashionMNIST"):
-        return _DOWNLOAD_ONLY_BLOCK + f'''def _read_idx_images(path):
-    """Read MNIST image files in the IDX format."""
-    with gzip.open(path, "rb") as f:
-        _magic, n, rows, cols = struct.unpack(">IIII", f.read(16))
-        data = np.frombuffer(f.read(), dtype=np.uint8)
-    return data.reshape(n, rows, cols).copy()
-
-def _read_idx_labels(path):
-    """Read MNIST label files in the IDX format."""
-    with gzip.open(path, "rb") as f:
-        _magic, n = struct.unpack(">II", f.read(8))
-        return np.frombuffer(f.read(), dtype=np.uint8).copy()
-
-class ArrayImageDataset(Dataset):
-    """Dataset wrapper for pre-loaded numpy arrays."""
-    def __init__(self, images, labels, channels=1):
-        self.images = images
-        self.labels = labels
-        self.channels = channels
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        img = self.images[idx]
-        x = torch.from_numpy(img).float().unsqueeze(0) / 255.0
-        return x, int(self.labels[idx])
-
-def _load_idx_dataset(root, name, train):
-    """Downloads files if missing and returns IDX dataset."""
-    _ensure_idx_dataset_files(root, name)
-    subdir, _primary, _fallbacks = _idx_dataset_spec(name)
-    files = {{
-        "train": ("train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz"),
-        "test": ("t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"),
-    }}
-    split = "train" if train else "test"
-    img_name, lbl_name = files[split]
-    root = Path(root) / subdir
-    images = _read_idx_images(root / img_name)
-    labels = _read_idx_labels(root / lbl_name)
-    return ArrayImageDataset(images, labels, channels=1)
-
-def load_builtin_dataset(name, data_dir, train):
-    """Unified entrypoint to load a builtin dataset."""
-    return _load_idx_dataset(data_dir, name, train)
+    if dataset_name in ("MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"):
+        return f'''def load_builtin_dataset(name, data_dir, train):
+    raise RuntimeError(
+        f"Direct internet download of '{{name}}' is disabled on cluster compute nodes. "
+        "Please provide your dataset path using 'Import' (custom dataset) or select an available cluster module dataset (e.g. ImageNet)."
+    )
 '''
 
-    if dataset_name in ("CIFAR10", "CIFAR100"):
-        return _DOWNLOAD_ONLY_BLOCK + f'''class ArrayImageDataset(Dataset):
-    """Dataset wrapper for pre-loaded numpy arrays."""
-    def __init__(self, images, labels, channels=3):
-        self.images = images
-        self.labels = labels
-        self.channels = channels
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        img = self.images[idx]
-        # Reshape or permute channels correctly
-        if img.ndim == 3 and img.shape[-1] == 3:
-            x = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
-        else:
-            x = torch.from_numpy(img.reshape(3, 32, 32)).float() / 255.0
-        return x, int(self.labels[idx])
-
-def _load_cifar_dataset(root, name, train):
-    """Downloads CIFAR archive, extracts and loads split images."""
-    _ensure_cifar_dataset_files(root, name)
-    root = Path(root)
-    if name == "CIFAR10":
-        folder = "cifar-10-batches-py"
-        files = (
-            ["data_batch_1", "data_batch_2", "data_batch_3", "data_batch_4", "data_batch_5"]
-            if train
-            else ["test_batch"]
-        )
-    else:
-        folder = "cifar-100-python"
-        files = ["train" if train else "test"]
-    
-    images_list = []
-    labels_list = []
-    for fname in files:
-        fpath = root / folder / fname
-        with open(fpath, "rb") as f:
-            entry = pickle.load(f, encoding="latin1")
-            images_list.append(entry["data"])
-            if name == "CIFAR10":
-                labels_list.extend(entry["labels"])
-            else:
-                labels_list.extend(entry["fine_labels"])
-    
-    images = np.vstack(images_list).reshape(-1, 3, 32, 32)
-    images = images.transpose((0, 2, 3, 1))
-    labels = np.array(labels_list, dtype=np.int64)
-    return ArrayImageDataset(images, labels, channels=3)
-
-def load_builtin_dataset(name, data_dir, train):
-    """Unified entrypoint to load CIFAR dataset."""
-    return _load_cifar_dataset(data_dir, name, train)
-'''
 
     if dataset_name == "ImageNet":
         return '''def load_builtin_dataset(name, data_dir, train):
