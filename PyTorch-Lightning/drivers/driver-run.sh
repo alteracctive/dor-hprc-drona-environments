@@ -12,6 +12,8 @@ cd [flocation]
 module purge
 module load WebProxy
 
+export PYTHONNOUSERSITE=1
+
 [setupEnv]
 
 

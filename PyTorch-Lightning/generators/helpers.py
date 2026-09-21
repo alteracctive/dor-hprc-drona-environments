@@ -132,7 +132,7 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
         if not self.img_dir.is_dir() or not self.mask_dir.is_dir():
             raise FileNotFoundError(f"Segmentation folders 'images' and 'masks' must exist under {self.root}")
         
-        valid_exts = ('.png', '.jpg', '.jpeg', '.bmp')
+        valid_exts = ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
         self.img_files = sorted(
             [p for p in self.img_dir.iterdir() if p.suffix.lower() in valid_exts]
         )
@@ -143,7 +143,7 @@ def _get_data_helpers(ds_type, dataset_name, cv_model_arch="cnn", dataset_format
     def __getitem__(self, idx):
         img_path = self.img_files[idx]
         mask_path = None
-        for ext in ('.png', '.jpg', '.jpeg', '.bmp'):
+        for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
             candidate = self.mask_dir / f"{img_path.stem}{ext}"
             if candidate.exists():
                 mask_path = candidate

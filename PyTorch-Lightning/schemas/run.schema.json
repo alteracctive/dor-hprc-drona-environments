@@ -10,7 +10,6 @@
     "disableJobNameChange": false,
     "disableJobLocationChange": false
   },
-
   "ContainerModelCategory": {
     "type": "rowContainer",
     "label": "Model Type",
@@ -19,22 +18,45 @@
         "type": "select",
         "name": "modelCategory",
         "label": "Model category",
-        "help": "Select the model category:\\n- Custom: A bare-bones, highly commented blueprint for any user model.\\n- Computer Vision: Classification, segmentation (UNet), and ViT architectures.\\n- Sequential: Time-series forecasting and classification with LSTMs, GRUs, 1D CNNs, and Transformers.\\n- Natural Language Processing (Native Torchtext/PyTorch): Sequence-to-sequence, text classification, and custom lightweight Attention/Transformer blocks without overhead.\\n- Tabular & Structured Data Deep Learning: DeepMLPs, ResNets for Tabular, or TabNet primitives.\\n- Audio & Signal Processing: Speech processing, acoustic classification, and waveform synthesis using native torchaudio transforms.\\n- Generative Models: Image generation and latent space learning with VAEs, GANs, and Diffusion models.\\n- Graph Neural Networks (GNN): Node classification and molecular property regression (QM9) using GCN, GAT, or GraphSAGE message passing.",
+        "help": "Select the model category template. Choose Custom to start with a barebone template",
         "options": [
-          { "label": "Custom (Bare-bones blueprint)", "value": "custom" },
-          { "label": "Computer Vision (Classification, segmentation, ViT)", "value": "computer_vision" },
-          { "label": "Sequential / Time-Series (LSTMs, GRUs, 1D CNNs, Transformers)", "value": "sequential" },
-          { "label": "Natural Language Processing (Native Torchtext/PyTorch)", "value": "nlp" },
-          { "label": "Tabular & Structured Data Deep Learning", "value": "tabular" },
-          { "label": "Audio & Signal Processing", "value": "audio" },
-          { "label": "Generative Models (VAEs, GANs, Diffusion)", "value": "generative" },
-          { "label": "Graph Neural Networks (GNN)", "value": "gnn" }
+          {
+            "label": "Custom (Bare-bones template)",
+            "value": "custom"
+          },
+          {
+            "label": "Computer Vision (Classification, segmentation, ViT) - .png, .jpg, .jpeg, .bmp, .webp",
+            "value": "computer_vision"
+          },
+          {
+            "label": "Sequential / Time-Series (LSTMs, GRUs, 1D CNNs, Transformers)- .csv",
+            "value": "sequential"
+          },
+          {
+            "label": "Natural Language Processing (Native Torchtext/PyTorch)- .csv, .tsv, .txt",
+            "value": "nlp"
+          },
+          {
+            "label": "Tabular & Structured Data Deep Learning - .csv",
+            "value": "tabular"
+          },
+          {
+            "label": "Audio & Signal Processing - .wav, .mp3, .flac, .ogg",
+            "value": "audio"
+          },
+          {
+            "label": "Generative Models (VAEs, GANs, Diffusion) - .png, .jpg, .jpeg, .bmp, .webp",
+            "value": "generative"
+          },
+          {
+            "label": "Graph Neural Networks (GNN) - .graph, .edgelist",
+            "value": "gnn"
+          }
         ],
         "value": "custom"
       }
     }
   },
-
   "ContainerCVDataset": {
     "type": "rowContainer",
     "label": "Image Dataset",
@@ -45,8 +67,14 @@
         "name": "datasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -62,7 +90,10 @@
             "value": "ImageNet",
             "help": "Cluster dataset modules are loaded directly from cluster storage. Direct internet downloads are disabled. For other datasets, choose Import to provide your data path.",
             "options": [
-              { "value": "ImageNet", "label": "ImageNet (HPRC Datasets/ImageNet-PyTorch)" }
+              {
+                "value": "ImageNet",
+                "label": "ImageNet (HPRC Datasets/ImageNet-PyTorch)"
+              }
             ]
           }
         }
@@ -74,7 +105,7 @@
         "remoteLabel": "local",
         "localLabel": "cluster",
         "showFiles": "False",
-        "help": "Path to dataset root with train/, val/, and optionally test/ subdirectories. Each class must be a subfolder (class name) containing standard raw images (.png, .jpg, .jpeg) corresponding to that class.",
+        "help": "Path to dataset root with train/, val/, and optionally test/ subdirectories. For classification (CNN, MLP, ViT), each class must be a subfolder containing raw image files (.png, .jpg, .jpeg, .bmp, .webp) or .pt tensors. For U-Net segmentation, requires images/ and masks/ subdirectories with matching image files (.png, .jpg, .jpeg, .bmp, .webp) or .pt tensors.",
         "condition": "datasetType.custom",
         "files": "False"
       },
@@ -84,13 +115,25 @@
         "name": "cvModelArch",
         "value": "cnn",
         "options": [
-          { "value": "cnn", "label": "CNN Classification" },
-          { "value": "mlp", "label": "MLP Classification" },
-          { "value": "vit", "label": "Vision Transformer (ViT)" },
-          { "value": "unet", "label": "U-Net Semantic Segmentation" }
+          {
+            "value": "cnn",
+            "label": "CNN Classification"
+          },
+          {
+            "value": "mlp",
+            "label": "MLP Classification"
+          },
+          {
+            "value": "vit",
+            "label": "Vision Transformer (ViT)"
+          },
+          {
+            "value": "unet",
+            "label": "U-Net Semantic Segmentation"
+          }
         ],
         "condition": "datasetType.custom",
-        "help": "Select model architecture for your custom image dataset."
+        "help": "Select model architecture for your custom image dataset (accepts .png, .jpg, .jpeg, .bmp, .webp raw images or .pt tensor files)."
       },
       "cvDatasetFormat": {
         "type": "radioGroup",
@@ -98,15 +141,20 @@
         "name": "cvDatasetFormat",
         "value": "tensors",
         "options": [
-          { "label": "Raw Images (.png, .jpg, etc.)", "value": "images" },
-          { "label": "PyTorch Tensors (.pt)", "value": "tensors" }
+          {
+            "label": "Raw Images (.png, .jpg, etc.)",
+            "value": "images"
+          },
+          {
+            "label": "PyTorch Tensors (.pt)",
+            "value": "tensors"
+          }
         ],
         "condition": "datasetType.custom",
-        "help": "Choose whether your custom data folder contains raw images (organized by class subdirectories, or image/mask subdirectories for UNet) or pre-processed PyTorch tensor (.pt) files."
+        "help": "Choose whether your custom data folder contains raw images (.png, .jpg, .jpeg, .bmp, .webp organized by class subdirectories, or images/masks subdirectories for UNet) or pre-processed PyTorch tensor (.pt) files."
       }
     }
   },
-
   "ContainerCVSettings": {
     "type": "rowContainer",
     "label": "Image Specifications",
@@ -125,14 +173,19 @@
         "name": "cvChannels",
         "value": "3",
         "options": [
-          { "value": "3", "label": "RGB (3 channels)" },
-          { "value": "1", "label": "Grayscale (1 channel)" }
+          {
+            "value": "3",
+            "label": "RGB (3 channels)"
+          },
+          {
+            "value": "1",
+            "label": "Grayscale (1 channel)"
+          }
         ],
         "help": "Number of input channels. Use Grayscale (1 channel) for MNIST or grayscale medical scans, RGB (3 channels) for color photos."
       }
     }
   },
-
   "ContainerSeqDataset": {
     "type": "rowContainer",
     "label": "Time-Series Dataset",
@@ -143,8 +196,14 @@
         "name": "seqDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -159,9 +218,18 @@
             "name": "seqBuiltinDataset",
             "value": "mackey_glass",
             "options": [
-              { "value": "mackey_glass", "label": "Mackey-Glass (Generated)" },
-              { "value": "fastText", "label": "fastText (Datasets/fastText)" },
-              { "value": "AISHELL", "label": "AISHELL (Datasets/AISHELL)" }
+              {
+                "value": "mackey_glass",
+                "label": "Mackey-Glass (Generated)"
+              },
+              {
+                "value": "fastText",
+                "label": "fastText (Datasets/fastText)"
+              },
+              {
+                "value": "AISHELL",
+                "label": "AISHELL (Datasets/AISHELL)"
+              }
             ],
             "help": "Real/standard sequential datasets or cluster modules."
           }
@@ -180,7 +248,7 @@
             "localLabel": "cluster",
             "showFiles": "True",
             "files": "True",
-            "help": "Path to a CSV file where each row is a time step."
+            "help": "Path to a CSV file (.csv) where each row represents a sequential time step and columns contain numeric features and target values."
           },
           "targetColumn": {
             "type": "text",
@@ -192,7 +260,6 @@
       }
     }
   },
-
   "ContainerSeqSettings": {
     "type": "rowContainer",
     "label": "Sequence Settings",
@@ -204,21 +271,39 @@
         "name": "seqModelType",
         "value": "lstm",
         "options": [
-          { "value": "lstm", "label": "LSTM (Long Short-Term Memory)" },
-          { "value": "gru", "label": "GRU (Gated Recurrent Unit)" },
-          { "value": "cnn1d", "label": "1D CNN (Temporal ConvNet)" },
-          { "value": "transformer", "label": "Transformer Encoder" }
+          {
+            "value": "lstm",
+            "label": "LSTM (Long Short-Term Memory)"
+          },
+          {
+            "value": "gru",
+            "label": "GRU (Gated Recurrent Unit)"
+          },
+          {
+            "value": "cnn1d",
+            "label": "1D CNN (Temporal ConvNet)"
+          },
+          {
+            "value": "transformer",
+            "label": "Transformer Encoder"
+          }
         ],
         "condition": "seqDatasetType.custom",
-        "help": "Select sequence modeling architecture for custom dataset."
+        "help": "Select sequence modeling architecture (LSTM, GRU, 1D CNN, or Transformer) to train on sequence .csv data."
       },
       "seqTaskType": {
         "type": "radioGroup",
         "name": "seqTaskType",
         "label": "Task type",
         "options": [
-          { "label": "Regression", "value": "regression" },
-          { "label": "Classification", "value": "classification" }
+          {
+            "label": "Regression",
+            "value": "regression"
+          },
+          {
+            "label": "Classification",
+            "value": "classification"
+          }
         ],
         "value": "regression"
       },
@@ -248,8 +333,6 @@
       }
     }
   },
-
-
   "ContainerGenDataset": {
     "type": "rowContainer",
     "label": "Generative Dataset",
@@ -260,8 +343,14 @@
         "name": "genDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -276,7 +365,10 @@
             "name": "genBuiltinDataset",
             "value": "llava-onevision",
             "options": [
-              { "value": "llava-onevision", "label": "LLaVA-OneVision (Datasets/llava-onevision)" }
+              {
+                "value": "llava-onevision",
+                "label": "LLaVA-OneVision (Datasets/llava-onevision)"
+              }
             ],
             "help": "Image datasets or multimodal cluster datasets for generative learning."
           }
@@ -295,7 +387,7 @@
             "localLabel": "cluster",
             "showFiles": "False",
             "files": "False",
-            "help": "Root directory containing train/ and val/ subdirectories. Each class is a subfolder containing standard raw images (.png, .jpg, .jpeg) to reconstruct."
+            "help": "Root directory containing train/ and val/ subdirectories. Each class is a subfolder containing raw image files (.png, .jpg, .jpeg, .bmp, .webp) or .pt tensor files to reconstruct."
           },
           "genDatasetFormat": {
             "type": "radioGroup",
@@ -303,16 +395,21 @@
             "name": "genDatasetFormat",
             "value": "tensors",
             "options": [
-              { "label": "Raw Images (.png, .jpg, etc.)", "value": "images" },
-              { "label": "PyTorch Tensors (.pt)", "value": "tensors" }
+              {
+                "label": "Raw Images (.png, .jpg, etc.)",
+                "value": "images"
+              },
+              {
+                "label": "PyTorch Tensors (.pt)",
+                "value": "tensors"
+              }
             ],
-            "help": "Choose whether your custom data folder contains raw images or pre-processed PyTorch tensor (.pt) files."
+            "help": "Choose whether your custom data folder contains raw images (.png, .jpg, .jpeg, .bmp, .webp) or pre-processed PyTorch tensor (.pt) files."
           }
         }
       }
     }
   },
-
   "ContainerGenSettings": {
     "type": "rowContainer",
     "label": "Generative Settings",
@@ -324,11 +421,20 @@
         "name": "genModelType",
         "value": "vae",
         "options": [
-          { "value": "vae", "label": "VAE (Variational Autoencoder)" },
-          { "value": "gan", "label": "GAN (Generative Adversarial Network)" },
-          { "value": "diffusion", "label": "Diffusion Model (DDPM)" }
+          {
+            "value": "vae",
+            "label": "VAE (Variational Autoencoder)"
+          },
+          {
+            "value": "gan",
+            "label": "GAN (Generative Adversarial Network)"
+          },
+          {
+            "value": "diffusion",
+            "label": "Diffusion Model (DDPM)"
+          }
         ],
-        "help": "Select the generative model architecture."
+        "help": "Select generative model architecture (VAE, GAN, or Diffusion DDPM) for image generation from raw images (.png, .jpg, .jpeg, .bmp, .webp) or .pt tensors."
       },
       "latentDim": {
         "type": "number",
@@ -338,7 +444,6 @@
       }
     }
   },
-
   "ContainerCustomDataset": {
     "type": "rowContainer",
     "label": "Custom Dataset",
@@ -352,11 +457,10 @@
         "localLabel": "cluster",
         "showFiles": "True",
         "files": "True",
-        "help": "Select a file or directory containing your custom training dataset. This path will be loaded inside the generated train.py script."
+        "help": "Select a file or directory containing your custom training dataset (e.g. .pt, .csv, .npy, .h5, or dataset folder). This path will be loaded inside the generated train.py script."
       }
     }
   },
-
   "ContainerNLPDataset": {
     "type": "rowContainer",
     "label": "NLP Dataset",
@@ -367,8 +471,14 @@
         "name": "nlpDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -383,7 +493,10 @@
             "name": "nlpBuiltinDataset",
             "value": "fastText",
             "options": [
-              { "value": "fastText", "label": "fastText (Datasets/fastText)" }
+              {
+                "value": "fastText",
+                "label": "fastText (Datasets/fastText)"
+              }
             ],
             "help": "HPRC cluster datasets for NLP/Text classification."
           }
@@ -397,12 +510,11 @@
         "localLabel": "cluster",
         "showFiles": "True",
         "files": "True",
-        "help": "Select a custom text file or CSV containing raw text or sequence inputs.",
+        "help": "Select a custom text file (.txt), tab-delimited file (.tsv), or comma-separated file (.csv) containing raw text strings and labels.",
         "condition": "nlpDatasetType.custom"
       }
     }
   },
-
   "ContainerNLPSettings": {
     "type": "rowContainer",
     "label": "NLP Settings",
@@ -414,10 +526,16 @@
         "name": "nlpModelType",
         "value": "attention",
         "options": [
-          { "value": "attention", "label": "Text Classification (Attention/Transformer)" },
-          { "value": "seq2seq", "label": "Sequence-to-Sequence (Seq2Seq)" }
+          {
+            "value": "attention",
+            "label": "Text Classification (Attention/Transformer)"
+          },
+          {
+            "value": "seq2seq",
+            "label": "Sequence-to-Sequence (Seq2Seq)"
+          }
         ],
-        "help": "Select NLP modeling architecture."
+        "help": "Select NLP modeling architecture for text classification or seq2seq tasks accepting .csv, .tsv, or .txt datasets."
       },
       "nlpMaxSeqLen": {
         "type": "number",
@@ -428,7 +546,6 @@
       }
     }
   },
-
   "ContainerTabularDataset": {
     "type": "rowContainer",
     "label": "Tabular Dataset",
@@ -439,8 +556,14 @@
         "name": "tabDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -455,7 +578,10 @@
             "name": "tabBuiltinDataset",
             "value": "synthetic_tabular",
             "options": [
-              { "value": "synthetic_tabular", "label": "Synthetic Tabular Dataset (Generated)" }
+              {
+                "value": "synthetic_tabular",
+                "label": "Synthetic Tabular Dataset (Generated)"
+              }
             ],
             "help": "Prepared or synthetically generated tabular dataset."
           }
@@ -469,7 +595,7 @@
         "localLabel": "cluster",
         "showFiles": "True",
         "files": "True",
-        "help": "Select a custom CSV file containing tabular features and targets.",
+        "help": "Select a custom comma-separated values file (.csv) containing numeric/categorical tabular features and a target column.",
         "condition": "tabDatasetType.custom"
       },
       "tabTargetColumn": {
@@ -482,7 +608,6 @@
       }
     }
   },
-
   "ContainerTabularSettings": {
     "type": "rowContainer",
     "label": "Tabular Settings",
@@ -494,26 +619,40 @@
         "name": "tabModelType",
         "value": "mlp",
         "options": [
-          { "value": "mlp", "label": "DeepMLP" },
-          { "value": "resnet", "label": "ResNet for Tabular" },
-          { "value": "tabnet", "label": "TabNet Primitives" }
+          {
+            "value": "mlp",
+            "label": "DeepMLP"
+          },
+          {
+            "value": "resnet",
+            "label": "ResNet for Tabular"
+          },
+          {
+            "value": "tabnet",
+            "label": "TabNet Primitives"
+          }
         ],
-        "help": "Select Tabular deep learning architecture."
+        "help": "Select Tabular deep learning architecture (DeepMLP, ResNet, TabNet) to train on structured .csv data."
       },
       "tabTaskType": {
         "type": "radioGroup",
         "name": "tabTaskType",
         "label": "Task type",
         "options": [
-          { "label": "Regression", "value": "regression" },
-          { "label": "Classification", "value": "classification" }
+          {
+            "label": "Regression",
+            "value": "regression"
+          },
+          {
+            "label": "Classification",
+            "value": "classification"
+          }
         ],
         "value": "regression",
         "help": "Choose between regression (continuous values) or classification (discrete classes) for your tabular task."
       }
     }
   },
-
   "ContainerAudioDataset": {
     "type": "rowContainer",
     "label": "Audio Dataset",
@@ -524,8 +663,14 @@
         "name": "audioDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -540,7 +685,10 @@
             "name": "audioBuiltinDataset",
             "value": "AISHELL",
             "options": [
-              { "value": "AISHELL", "label": "AISHELL (Datasets/AISHELL)" }
+              {
+                "value": "AISHELL",
+                "label": "AISHELL (Datasets/AISHELL)"
+              }
             ],
             "help": "Acoustic or speech dataset loaded from cluster module."
           }
@@ -554,12 +702,11 @@
         "localLabel": "cluster",
         "showFiles": "False",
         "files": "False",
-        "help": "Path to dataset root with audio files (arranged by class folder).",
+        "help": "Path to dataset root containing audio files (.wav, .mp3, .flac, .ogg) arranged by class subfolder.",
         "condition": "audioDatasetType.custom"
       }
     }
   },
-
   "ContainerAudioSettings": {
     "type": "rowContainer",
     "label": "Audio Settings",
@@ -571,11 +718,20 @@
         "name": "audioModelType",
         "value": "classification",
         "options": [
-          { "value": "classification", "label": "Acoustic Classification" },
-          { "value": "speech", "label": "Speech Processing" },
-          { "value": "synthesis", "label": "Waveform Synthesis" }
+          {
+            "value": "classification",
+            "label": "Acoustic Classification"
+          },
+          {
+            "value": "speech",
+            "label": "Speech Processing"
+          },
+          {
+            "value": "synthesis",
+            "label": "Waveform Synthesis"
+          }
         ],
-        "help": "Select audio modeling task and architecture."
+        "help": "Select audio modeling task and architecture (accepts .wav, .mp3, .flac, .ogg audio files)."
       },
       "audioTransformType": {
         "type": "select",
@@ -583,15 +739,23 @@
         "name": "audioTransformType",
         "value": "mel_spectrogram",
         "options": [
-          { "value": "mel_spectrogram", "label": "Mel-Spectrogram" },
-          { "value": "spectrogram", "label": "Spectrogram" },
-          { "value": "mfcc", "label": "MFCC" }
+          {
+            "value": "mel_spectrogram",
+            "label": "Mel-Spectrogram"
+          },
+          {
+            "value": "spectrogram",
+            "label": "Spectrogram"
+          },
+          {
+            "value": "mfcc",
+            "label": "MFCC"
+          }
         ],
         "help": "Feature extraction transform to use from torchaudio.transforms."
       }
     }
   },
-
   "ContainerGNNDataset": {
     "type": "rowContainer",
     "label": "GNN Dataset",
@@ -602,8 +766,14 @@
         "name": "graphDatasetType",
         "label": "Dataset source",
         "options": [
-          { "label": "Import", "value": "custom" },
-          { "label": "Prepared", "value": "builtin" }
+          {
+            "label": "Import",
+            "value": "custom"
+          },
+          {
+            "label": "Prepared",
+            "value": "builtin"
+          }
         ],
         "value": "custom"
       },
@@ -618,7 +788,10 @@
             "name": "graphBuiltinDataset",
             "value": "QM9",
             "options": [
-              { "value": "QM9", "label": "QM9 (Datasets/QM9)" }
+              {
+                "value": "QM9",
+                "label": "QM9 (Datasets/QM9)"
+              }
             ],
             "help": "Graph dataset loaded from cluster module."
           }
@@ -632,12 +805,11 @@
         "localLabel": "cluster",
         "showFiles": "True",
         "files": "True",
-        "help": "Path to a custom graph data file (.pt) or dataset directory.",
+        "help": "Path to a custom PyTorch Geometric graph data file (.pt) or dataset directory containing data.pt.",
         "condition": "graphDatasetType.custom"
       }
     }
   },
-
   "ContainerGNNSettings": {
     "type": "rowContainer",
     "label": "GNN Settings",
@@ -649,11 +821,20 @@
         "name": "gnnLayerType",
         "value": "gcn",
         "options": [
-          { "value": "gcn", "label": "GCN (Graph Convolutional Network)" },
-          { "value": "gat", "label": "GAT (Graph Attention Network)" },
-          { "value": "sage", "label": "GraphSAGE" }
+          {
+            "value": "gcn",
+            "label": "GCN (Graph Convolutional Network)"
+          },
+          {
+            "value": "gat",
+            "label": "GAT (Graph Attention Network)"
+          },
+          {
+            "value": "sage",
+            "label": "GraphSAGE"
+          }
         ],
-        "help": "Select the GNN layer message-passing architecture."
+        "help": "Select GNN message-passing architecture (GCN, GAT, GraphSAGE) to train on graph .pt datasets."
       },
       "gnnHiddenDim": {
         "type": "number",
@@ -669,7 +850,6 @@
       }
     }
   },
-
   "ContainerHyperparams": {
     "type": "rowContainer",
     "label": "Training",
@@ -710,7 +890,6 @@
       }
     }
   },
-
   "ContainerLogging": {
     "type": "rowContainer",
     "label": "Logging",
@@ -753,7 +932,6 @@
       }
     }
   },
-
   "ContainerTasks": {
     "type": "rowContainer",
     "label": "GPU",
@@ -785,7 +963,6 @@
       }
     }
   },
-
   "ContainerAdditionals": {
     "type": "rowContainer",
     "label": "Slurm Options",
@@ -794,7 +971,12 @@
         "type": "unit",
         "label": "Memory",
         "name": "memory",
-        "units": [{ "label": "GB", "value": "G" }]
+        "units": [
+          {
+            "label": "GB",
+            "value": "G"
+          }
+        ]
       },
       "Walltime": {
         "type": "time",
