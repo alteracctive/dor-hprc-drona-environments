@@ -6,7 +6,7 @@
 [PARTITION]
 [EXTRA]
 
-module purge
+module --force purge
 module load WebProxy
 
 export PYTHONNOUSERSITE=1

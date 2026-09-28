@@ -135,7 +135,7 @@ def get_train_slurm_directives(train_job_id, job_dir):
         "--job-name", "--time", "--mem", "--ntasks", "--nodes", "--cpus-per-task",
         "--output", "--error", "--gres", "--nodelist", "--exclude",
         "--gpu", "--gpus", "--gpus-per-node", "--gpus-per-task",
-        "--constraint",
+        "--constraint", "--chdir", "-D",
     }
 
     def _sbatch_key(token):
@@ -515,14 +515,17 @@ if tb_start_trigger:
             pass
 
         # Generate sbatch script content for the separate TensorBoard job
+        tb_out_path = os.path.join(job_dir, "tb_out.%j")
+        tb_err_path = os.path.join(job_dir, "tb_error.%j")
         sbatch_content = f"""#!/bin/bash
 #SBATCH --job-name=tb-session
+#SBATCH --chdir={job_dir}
+#SBATCH --output={tb_out_path}
+#SBATCH --error={tb_err_path}
 #SBATCH --time={formatted_time}
 #SBATCH --mem=4G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --output=tb_out.%j
-#SBATCH --error=tb_error.%j
 {slurm_directives_block}
 source /etc/profile
 if [ -f /sw/lmod/lmod/init/bash ]; then
@@ -646,7 +649,7 @@ wait $TB_PID
         new_job_id = None
         submit_error = None
         try:
-            res = subprocess.run([get_slurm_cmd("sbatch"), tb_job_sh], capture_output=True, text=True)
+            res = subprocess.run([get_slurm_cmd("sbatch"), tb_job_sh], cwd=job_dir, capture_output=True, text=True)
             if res.returncode == 0:
                 import re
                 match = re.search(r"Submitted batch job (\d+)", res.stdout)

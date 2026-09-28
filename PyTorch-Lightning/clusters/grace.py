@@ -42,7 +42,7 @@ def cluster_slurm_checks(nodenum,tasknum,cpunum,totalmemnum,gpu,numgpunum,timest
 
    # let's check for conflicting requirements
    if nodenum > 128:
-      drona_add_messagr("Limit for jobs is 128 nodes. Requested #nodes > 32. Your job will not run. Please adjust #nodes.", "error")
+      drona_add_message("Limit for jobs is 128 nodes. Requested #nodes > 32. Your job will not run. Please adjust #nodes.", "error")
    elif nodenum > 64:
       if total_hours > 24:
          drona_add_message("Limit for jobs requesting more than 64 nodes is 24 hours. Your job will not run. Please adjust time or request number of nodes","error")
@@ -72,7 +72,7 @@ def cluster_slurm_checks(nodenum,tasknum,cpunum,totalmemnum,gpu,numgpunum,timest
            drona_add_message("Request " + str(cpunum) + " cpus pr task. Bigmem nodes have max of "+str(maxcpunodebigmem) + "cores per node. Your job will not run.","error")  
    
    if cpn > maxcpunode:
-       drona_add_message("Request " + str(cpn) + " coews per node. Regular nodes have max of "+str(maxcpunodebigmem) + "cores per node. Your job will not run.","error")
+       drona_add_message("Request " + str(cpn) + " cores per node. Regular nodes have max of "+str(maxcpunodebigmem) + "cores per node. Your job will not run.","error")
    if cpunum > maxcpunode:
            drona_add_message("Request " + str(cpunum) + " cpus per task. Regular  nodes have max of "+str(maxcpunode) + "cores per node. Your job will not run.","error")
 

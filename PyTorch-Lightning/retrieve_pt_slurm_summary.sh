@@ -1,5 +1,6 @@
 #!/bin/bash
 # Given $LOCATION, emits an HTML table summarising the SLURM jobs for this run.
+export PYTHONDONTWRITEBYTECODE=1
 
 LOCATION="${LOCATION:-}"
 if [ -z "$LOCATION" ] || [ ! -d "$LOCATION" ]; then

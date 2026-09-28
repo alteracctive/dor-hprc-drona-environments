@@ -9,12 +9,4 @@ fi
 
 cd [flocation]
 
-module purge
-module load WebProxy
-
-export PYTHONNOUSERSITE=1
-
-[setupEnv]
-
-
 /sw/local/bin/sbatch [job-file-name]

@@ -1190,10 +1190,9 @@ if [ -d "{log_dir}" ] || mkdir -p "{log_dir}"; then
     echo "$TB_PORT" > tb_port.txt
     NODE_NAME=$(hostname)
     
-    # Isolate module loading and execution in a subshell to avoid compiler toolchain conflicts
-    # Use srun to launch tensorboard concurrently within the main job's allocation
+    # Launch tensorboard concurrently within the main job's allocation using python3 / tensorboard
     (
-        module load GCC/13.2.0 tensorboard/2.18.0
+        srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap python3 -m tensorboard.main --logdir="{log_dir}" --port=$TB_PORT --bind_all >&2 || \
         srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap tensorboard --logdir="{log_dir}" --port=$TB_PORT --bind_all >&2
     ) &
     TB_PID=$!
