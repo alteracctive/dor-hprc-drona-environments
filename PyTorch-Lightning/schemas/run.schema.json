@@ -880,7 +880,13 @@
         "name": "numWorkers",
         "value": "0",
         "help": "Number of DataLoader subprocesses. Use 0 on single-CPU allocations to avoid worker overhead."
-      },
+      }
+    }
+  },
+  "ContainerTrainingOptions": {
+    "type": "rowContainer",
+    "label": "Options",
+    "elements": {
       "seed": {
         "type": "number",
         "label": "Random seed",
@@ -912,6 +918,21 @@
             "value": "32"
           }
         ]
+      },
+      "checkpointEnable": {
+        "type": "checkbox",
+        "label": "Enable model checkpointing",
+        "name": "checkpointEnable",
+        "value": "Yes",
+        "help": "When enabled, saves the best-performing model checkpoint based on minimum validation loss. When disabled, defaults to saving only the final model state at the last epoch."
+      },
+      "exportOnnx": {
+        "type": "checkbox",
+        "label": "Export final model to ONNX",
+        "name": "exportOnnx",
+        "value": "No",
+        "condition": "!modelCategory.gnn",
+        "help": "When enabled, exports the trained model to ONNX format (final_model.onnx) at the end of the training run."
       }
     }
   },
@@ -940,20 +961,12 @@
         "name": "logEveryNSteps",
         "value": "50"
       },
-      "checkpointEnable": {
+      "enableTensorBoard": {
         "type": "checkbox",
-        "label": "Enable model checkpointing",
-        "name": "checkpointEnable",
+        "label": "Start TensorBoard alongside this job",
+        "name": "enableTensorBoard",
         "value": "Yes",
-        "help": "When enabled, saves the best-performing model checkpoint based on minimum validation loss. When disabled, defaults to saving only the final model state at the last epoch."
-      },
-      "exportOnnx": {
-        "type": "checkbox",
-        "label": "Export final model to ONNX",
-        "name": "exportOnnx",
-        "value": "No",
-        "condition": "!modelCategory.gnn",
-        "help": "When enabled, exports the trained model to ONNX format (final_model.onnx) at the end of the training run."
+        "help": "When enabled, starts a TensorBoard server on the compute node inside this job's allocation. Training logs are still written when this is off; open them later from the monitor page with a separate TensorBoard job."
       }
     }
   },

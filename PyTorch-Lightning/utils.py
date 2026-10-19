@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -1219,105 +1220,79 @@ def generate_lightning_script(
     return train_script
 
 
-def setup_tensorboard_in_job(mode, enableTensorBoard, location):
+def _stage_tensorboard_launch_script(location):
+    """Copy the TensorBoard launcher and port finder into the job directory."""
+    env_dir = _get_env_dir()
+    launcher = env_dir / "launch_tensorboard.sh"
+    script_content = launcher.read_text(encoding="utf-8") if launcher.is_file() else ""
+    script_content = script_content.replace("\r\n", "\n").replace("\r", "\n")
+    if script_content:
+        _write_staged_file(
+            env_dir,
+            location,
+            "launch_tensorboard.sh",
+            script_content,
+            show_in_preview=True,
+        )
+        if _is_valid_user_location(location):
+            dest = Path(_normalize_location(location)) / "launch_tensorboard.sh"
+            try:
+                dest.chmod(0o755)
+            except OSError:
+                pass
+
+    port_finder = env_dir / "find_free_tb_port.sh"
+    port_content = port_finder.read_text(encoding="utf-8") if port_finder.is_file() else _FIND_FREE_TB_PORT_SCRIPT
+    port_content = port_content.replace("\r\n", "\n").replace("\r", "\n")
+    _write_staged_file(
+        env_dir,
+        location,
+        "find_free_tb_port.sh",
+        port_content,
+        show_in_preview=False,
+    )
+
+
+def _write_tensorboard_job_flag(location, enabled):
+    """Record whether this job should start TensorBoard in its allocation."""
+    if not _is_valid_user_location(location):
+        return
+    dest = Path(_normalize_location(location)) / "tb_injob.txt"
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("Yes\n" if enabled else "No\n")
+    except OSError:
+        pass
+
+
+def setup_tensorboard_in_job(mode, enableTensorBoard="Yes", location="", logDir="./lightning_logs"):
     if mode == "monitor":
         return ""
 
-    # Parse logDir from train.py if possible
-    log_dir = "lightning_logs"
-    if location:
-        train_py_path = os.path.join(location, "train.py")
-        if os.path.isfile(train_py_path):
+    if _is_drona_var(enableTensorBoard):
+        enabled = True
+    else:
+        enabled = _checkbox_on(enableTensorBoard)
+
+    _write_tensorboard_job_flag(location, enabled)
+    if not enabled:
+        if _is_valid_user_location(location):
+            stale = Path(_normalize_location(location)) / "launch_tensorboard.sh"
             try:
-                import re
-                with open(train_py_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                match = re.search(r'LOG_DIR\s*=\s*["\']([^"\']+)["\']', content)
-                if match:
-                    val = match.group(1)
-                    if val.startswith("./"):
-                        val = val[2:]
-                    log_dir = val
-            except Exception:
+                stale.unlink()
+            except OSError:
                 pass
+        return "# TensorBoard server is not started with this job\n"
 
-    return f"""# Launch TensorBoard in the background on the compute node using srun
-if [ -d "{log_dir}" ] || mkdir -p "{log_dir}"; then
-    echo "Starting TensorBoard background server with srun..." >&2
-    
-    # Inline port finder logic: find a free port in range 6006-6050, then random high ports
-    TB_PORT=""
-    for port in $(seq 6006 6050); do
-      if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
-        TB_PORT=$port
-        break
-      fi
-    done
-    if [ -z "$TB_PORT" ]; then
-      for i in $(seq 1 1000); do
-        rand_val=$(( (RANDOM << 15) | RANDOM ))
-        port=$(( 6051 + (rand_val % 59485) ))
-        if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
-          TB_PORT=$port
-          break
-        fi
-      done
-      if [ -z "$TB_PORT" ]; then
-        for port in $(seq 6051 65535); do
-          if ! ss -tuln 2>/dev/null | grep -q ":${{port}} "; then
-            TB_PORT=$port
-            break
-          fi
-        done
-      fi
-    fi
-    if [ -z "$TB_PORT" ]; then
-      echo "ERROR: No free port found on node $(hostname)" >&2
-      exit 1
-    fi
+    log_dir = _resolve_val(logDir, "./lightning_logs")
+    if "\n" in log_dir or "\r" in log_dir:
+        drona_add_message("Log directory cannot contain newlines.", "error")
+        return ""
 
-    echo "$TB_PORT" > tb_port.txt
-    export TB_PORT
-    NODE_NAME=$(hostname)
-    
-    # Launch tensorboard concurrently within the main job's allocation using module loading inside srun
-    (
-        srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap bash -c '
-            source /etc/profile
-            if [ -f /sw/lmod/lmod/init/bash ]; then
-                source /sw/lmod/lmod/init/bash
-            elif [ -f /usr/share/lmod/lmod/init/bash ]; then
-                source /usr/share/lmod/lmod/init/bash
-            fi
-            module load GCC/13.2.0 tensorboard/2.18.0 2>/dev/null || \\
-            module load GCC/12.3.0 tensorboard/2.17.0 2>/dev/null || \\
-            module load GCC/12.3.0 tensorboard/2.15.1-CUDA-12.1.1 2>/dev/null || \\
-            module load tensorboard 2>/dev/null || true
-
-            if command -v tensorboard >/dev/null 2>&1; then
-                tensorboard --logdir="{log_dir}" --port=$TB_PORT --bind_all
-            elif python3 -m tensorboard.main --help >/dev/null 2>&1; then
-                python3 -m tensorboard.main --logdir="{log_dir}" --port=$TB_PORT --bind_all
-            else
-                echo "ERROR: TensorBoard binary or python module not found on $(hostname)" >&2
-                exit 1
-            fi
-        ' >&2
-    ) &
-    TB_PID=$!
-    
-    # Register exit trap to ensure TensorBoard is killed once the job finishes
-    _tb_cleanup() {{
-        echo "Cleaning up TensorBoard server..." >&2
-        if [ -n "$TB_PID" ]; then
-            kill $TB_PID 2>/dev/null
-            pkill -P $TB_PID 2>/dev/null
-        fi
-        pkill -u $USER -f "tensorboard.*--port=$TB_PORT" 2>/dev/null
-    }}
-    trap _tb_cleanup EXIT
-    
-    echo "TensorBoard auto-started with srun on node $NODE_NAME port $TB_PORT" >&2
-fi
-"""
+    _stage_tensorboard_launch_script(location)
+    return (
+        "# Start TensorBoard alongside this job\n"
+        f". ./launch_tensorboard.sh {shlex.quote(log_dir)}\n"
+    )
 

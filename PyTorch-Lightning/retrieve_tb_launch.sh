@@ -690,6 +690,17 @@ wait $TB_PID
             is_tb_job_active = True
             tb_job_state = "PENDING"
 
+# Jobs submitted with the checkbox off write tb_injob.txt = No.
+# Older jobs have no marker and still start TensorBoard in the allocation.
+injob_requested = True
+injob_flag_file = os.path.join(job_dir, "tb_injob.txt")
+if os.path.isfile(injob_flag_file):
+    try:
+        with open(injob_flag_file, "r") as f:
+            injob_requested = f.read().strip().lower() in ("yes", "true", "1")
+    except Exception:
+        pass
+
 # Re-read port values after potential script execution/auto-start
 injob_port = None
 injob_port_file = os.path.join(job_dir, "tb_port.txt")
@@ -908,7 +919,7 @@ else:
     <div style="color: #ef4444; font-weight: 600; margin-bottom: 12px;">Training job is not running.</div>
     """
 
-show_injob = is_train_job_active or not train_job_id
+show_injob = is_injob_running or (injob_requested and (is_train_job_active or not train_job_id))
 
 if show_injob:
     tb_steps_html = f"""
