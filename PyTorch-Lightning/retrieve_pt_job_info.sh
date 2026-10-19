@@ -1,20 +1,4 @@
 #!/bin/bash
-# Given $DRONA_ID, emits the job's output location as plain text.
-# Used by a hidden field so downstream retrievers can reference $pt_location.
-
-JSON_DATA=$($DRONA_RUNTIME_DIR/db_access/drona_db_retriever.py -i "$DRONA_ID" 2>/dev/null)
-export JSON_DATA
-
-python3 <<'EOF'
-import json
-import os
-import sys
-
-raw = os.environ.get("JSON_DATA", "").strip()
-try:
-    record = json.loads(raw) if raw else {}
-except Exception:
-    record = {}
-
-sys.stdout.write(record.get("location", ""))
-EOF
+# CRLF-safe wrapper: trailing "#" absorbs Windows CR so bash does not see $'\r' #
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)" #
+exec python3 "$SCRIPT_DIR/retrieve_pt_job_info.py" #

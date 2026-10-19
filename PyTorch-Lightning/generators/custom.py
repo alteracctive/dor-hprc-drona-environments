@@ -9,6 +9,7 @@ _DEFAULT_CUSTOM_STUB = '''#!/usr/bin/env python3
 """Generated PyTorch Lightning training script — Custom (Bare-bones)."""
 import os
 import torch
+# __MATMUL_PRECISION_BLOCK__
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 try:
@@ -84,9 +85,10 @@ def main():
     # ]
 
     trainer = L.Trainer(
-        max_epochs=MAX_EPOCHS, 
-        accelerator=ACCELERATOR, 
+        max_epochs=MAX_EPOCHS,
+        accelerator=ACCELERATOR,
         devices=DEVICES,
+        precision=PRECISION,
         # callbacks=callbacks,
     )
     trainer.fit(model, datamodule=datamodule)

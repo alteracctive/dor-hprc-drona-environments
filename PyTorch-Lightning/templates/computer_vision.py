@@ -10,6 +10,7 @@ This script demonstrates a complete deep learning workflow:
 
 import os
 import torch
+# __MATMUL_PRECISION_BLOCK__
 import torch.nn as nn
 from torch.utils.data import DataLoader
 # __LIGHTNING_IMPORT_BLOCK__
@@ -28,7 +29,7 @@ NUM_WORKERS = __NUM_WORKERS__          # Number of CPU subprocesses for data loa
 MAX_EPOCHS = __MAX_EPOCHS__            # Maximum number of training epochs
 ACCELERATOR = "__ACCELERATOR__"        # Accelerator hardware ("cpu", "gpu", "xpu", etc.)
 DEVICES = __DEVICES__                  # Number of device instances to use (e.g. 1, "auto")
-PRECISION = __PRECISION__              # Training precision (e.g. 32, "16-mixed", "bf16-mixed")
+PRECISION = __PRECISION__              # Trainer precision (32, "16-mixed", "bf16-mixed"); TF32 keeps 32 and enables Tensor Core matmuls
 LOG_EVERY_N_STEPS = __LOG_EVERY_N_STEPS__ # How often to log training metrics
 SEED = __SEED__                        # Random seed for reproducibility
 

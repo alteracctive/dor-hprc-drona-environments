@@ -76,6 +76,7 @@ Supports GCN, GAT, and GraphSAGE message-passing models.
 
 import os
 import torch
+# __MATMUL_PRECISION_BLOCK__
 import torch.nn as nn
 import torch.nn.functional as F
 

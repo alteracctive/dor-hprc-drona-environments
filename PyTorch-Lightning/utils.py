@@ -58,6 +58,92 @@ def _resolve_val(val, default):
     return str(val).strip()
 
 
+def _resolve_precision(precision):
+    """Map UI precision choice to Trainer precision and optional TF32 matmul flag.
+
+    Returns (trainer_precision, enable_tf32_matmul).
+    - tf32 → Trainer precision 32 + torch.set_float32_matmul_precision('high')
+    - bf16-mixed / 16-mixed → Lightning AMP + TF32 for remaining float32 matmuls
+    - 32 → full FP32, no TF32 override
+    """
+    # Selects may arrive as plain strings or {"value": "...", "label": "..."} JSON.
+    raw = _normalize_select_value(precision)
+    if not raw or _is_drona_var(raw):
+        raw = "tf32"
+    raw = raw.strip().lower()
+
+    aliases = {
+        "tf32": ("32", True),
+        "32-tf32": ("32", True),
+        "bf16": ("bf16-mixed", True),
+        "bf16-mixed": ("bf16-mixed", True),
+        "16": ("16-mixed", True),
+        "16-mixed": ("16-mixed", True),
+        "32": ("32", False),
+        "fp32": ("32", False),
+    }
+    if raw in aliases:
+        return aliases[raw]
+    # Defensive: match substrings if the UI sends a label-like string.
+    if "bf16" in raw:
+        return ("bf16-mixed", True)
+    if "16-mixed" in raw or raw == "fp16":
+        return ("16-mixed", True)
+    if "tf32" in raw:
+        return ("32", True)
+    return (raw, False)
+
+
+def _inject_tf32_matmul_precision(train_script, enable_tf32):
+    """Insert torch.set_float32_matmul_precision('high') at module level (all categories).
+
+    Must run before Trainer init so Lightning does not emit the H100 Tensor Core warning.
+    Prefer right after `import torch`; fall back to start of main().
+    """
+    if not train_script:
+        return train_script
+    if not enable_tf32:
+        return (
+            train_script
+            .replace("# __MATMUL_PRECISION_BLOCK__\n", "")
+            .replace("# __MATMUL_PRECISION_BLOCK__", "")
+        )
+    # Require an actual call site — template comments may mention the API name.
+    if re.search(r"(?m)^\s*torch\.set_float32_matmul_precision\s*\(", train_script):
+        return (
+            train_script
+            .replace("# __MATMUL_PRECISION_BLOCK__\n", "")
+            .replace("# __MATMUL_PRECISION_BLOCK__", "")
+        )
+
+    block = (
+        "# Enable TF32 Tensor Core matmuls on Ampere/Hopper GPUs (e.g. H100, A30)\n"
+        'torch.set_float32_matmul_precision("high")\n'
+    )
+
+    # Explicit placeholder (templates / GNN / custom stubs).
+    if "# __MATMUL_PRECISION_BLOCK__" in train_script:
+        return train_script.replace("# __MATMUL_PRECISION_BLOCK__", block.rstrip("\n"), 1)
+
+    # Module-level: immediately after the first bare `import torch`.
+    m = re.search(r"(?m)^(import torch)\s*$", train_script)
+    if m:
+        idx = m.end()
+        return train_script[:idx] + "\n" + block + train_script[idx:]
+
+    # Fallback: start of main(), before Trainer construction.
+    marker = "L.seed_everything(SEED, workers=True)"
+    if marker in train_script:
+        return train_script.replace(
+            marker,
+            marker
+            + "\n    # Enable TF32 Tensor Core matmuls on Ampere/Hopper GPUs (e.g. H100, A30)\n"
+            + '    torch.set_float32_matmul_precision("high")',
+            1,
+        )
+    return train_script
+
+
 def _resolve_int(val, default):
     if not val or _is_drona_var(val):
         return default
@@ -694,7 +780,7 @@ def generate_lightning_script_if_run(
     customDatasetPath="",
     job_location="",
     slurmBox="Yes",
-    precision="32",
+    precision="tf32",
     cvModelArch="cnn",
     seqModelType="lstm",
     gnnLayerType="gcn",
@@ -732,6 +818,7 @@ def generate_lightning_script_if_run(
                 debug_f.write(f"datasetType: {datasetType}\n")
                 debug_f.write(f"builtinDataset: {builtinDataset}\n")
                 debug_f.write(f"customDataPath: {customDataPath}\n")
+                debug_f.write(f"precision: {precision}\n")
                 debug_f.write(f"graphDatasetType: {graphDatasetType}\n")
                 debug_f.write(f"graphBuiltinDataset: {graphBuiltinDataset}\n")
                 debug_f.write(f"graphDataPath: {graphDataPath}\n")
@@ -832,7 +919,7 @@ def generate_lightning_script(
     customDatasetPath="",
     job_location="",
     slurmBox="Yes",
-    precision="32",
+    precision="tf32",
     cvModelArch="cnn",
     seqModelType="lstm",
     gnnLayerType="gcn",
@@ -881,7 +968,7 @@ def generate_lightning_script(
 
     acc = "gpu" if _wants_gpu(gpu, slurmBox) else "cpu"
     dev = "1"
-    prec = _resolve_val(precision, "32")
+    prec, enable_tf32 = _resolve_precision(precision)
 
     tb_on   = True
     ckpt_on = _checkbox_on(checkpointEnable)
@@ -1050,6 +1137,8 @@ def generate_lightning_script(
     if train_script is None:
         return ""  # error already added by sub-generator
 
+    train_script = _inject_tf32_matmul_precision(train_script, enable_tf32)
+
     if _checkbox_on(exportOnnx) and category != "gnn":
         onnx_export_code = '''    trainer.fit(model, datamodule=datamodule)
 
@@ -1188,25 +1277,45 @@ if [ -d "{log_dir}" ] || mkdir -p "{log_dir}"; then
     fi
 
     echo "$TB_PORT" > tb_port.txt
+    export TB_PORT
     NODE_NAME=$(hostname)
     
-    # Launch tensorboard concurrently within the main job's allocation using python3 / tensorboard
+    # Launch tensorboard concurrently within the main job's allocation using module loading inside srun
     (
-        srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap python3 -m tensorboard.main --logdir="{log_dir}" --port=$TB_PORT --bind_all >&2 || \
-        srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap tensorboard --logdir="{log_dir}" --port=$TB_PORT --bind_all >&2
+        srun --ntasks=1 --nodes=1 --cpus-per-task=1 --overlap bash -c '
+            source /etc/profile
+            if [ -f /sw/lmod/lmod/init/bash ]; then
+                source /sw/lmod/lmod/init/bash
+            elif [ -f /usr/share/lmod/lmod/init/bash ]; then
+                source /usr/share/lmod/lmod/init/bash
+            fi
+            module load GCC/13.2.0 tensorboard/2.18.0 2>/dev/null || \\
+            module load GCC/12.3.0 tensorboard/2.17.0 2>/dev/null || \\
+            module load GCC/12.3.0 tensorboard/2.15.1-CUDA-12.1.1 2>/dev/null || \\
+            module load tensorboard 2>/dev/null || true
+
+            if command -v tensorboard >/dev/null 2>&1; then
+                tensorboard --logdir="{log_dir}" --port=$TB_PORT --bind_all
+            elif python3 -m tensorboard.main --help >/dev/null 2>&1; then
+                python3 -m tensorboard.main --logdir="{log_dir}" --port=$TB_PORT --bind_all
+            else
+                echo "ERROR: TensorBoard binary or python module not found on $(hostname)" >&2
+                exit 1
+            fi
+        ' >&2
     ) &
     TB_PID=$!
     
     # Register exit trap to ensure TensorBoard is killed once the job finishes
-    cleanup() {{
+    _tb_cleanup() {{
         echo "Cleaning up TensorBoard server..." >&2
         if [ -n "$TB_PID" ]; then
             kill $TB_PID 2>/dev/null
             pkill -P $TB_PID 2>/dev/null
         fi
-        pkill -u $USER -f "tensorboard --logdir=.*--port=$TB_PORT" 2>/dev/null
+        pkill -u $USER -f "tensorboard.*--port=$TB_PORT" 2>/dev/null
     }}
-    trap cleanup EXIT
+    trap _tb_cleanup EXIT
     
     echo "TensorBoard auto-started with srun on node $NODE_NAME port $TB_PORT" >&2
 fi

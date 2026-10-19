@@ -536,7 +536,7 @@ fi
 
 module purge
 module load WebProxy
-module load GCC/13.2.0 tensorboard/2.18.0
+module load GCC/13.2.0 tensorboard/2.18.0 2>/dev/null || module load GCC/12.3.0 tensorboard/2.17.0 2>/dev/null || module load GCC/12.3.0 tensorboard/2.15.1-CUDA-12.1.1 2>/dev/null || module load tensorboard 2>/dev/null || true
 
 cd "{job_dir}"
 

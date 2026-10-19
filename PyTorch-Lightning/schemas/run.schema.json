@@ -887,6 +887,31 @@
         "name": "seed",
         "value": "42",
         "help": "Seed for PyTorch Lightning and dataset randomness. Default is 42."
+      },
+      "precision": {
+        "type": "select",
+        "label": "Training precision",
+        "name": "precision",
+        "value": "tf32",
+        "help": "Controls numeric precision and Tensor Core use. TF32 keeps float32 Trainer precision but calls torch.set_float32_matmul_precision('high') for faster matmuls on H100/A30. BF16 mixed enables Lightning automatic mixed precision (precision='bf16-mixed') for additional speedup. FP32 disables Tensor Core TF32 (highest precision, slower).",
+        "options": [
+          {
+            "label": "TF32 (recommended for H100/A30 Tensor Cores)",
+            "value": "tf32"
+          },
+          {
+            "label": "BF16 mixed precision (precision='bf16-mixed')",
+            "value": "bf16-mixed"
+          },
+          {
+            "label": "FP16 mixed precision (precision='16-mixed')",
+            "value": "16-mixed"
+          },
+          {
+            "label": "FP32 full precision (no TF32)",
+            "value": "32"
+          }
+        ]
       }
     }
   },
